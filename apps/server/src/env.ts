@@ -14,4 +14,10 @@ export const env = {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean),
+  // Credenciales para el basic-auth que protege /docs (Swagger UI) — sin
+  // esto, el mapa completo de la API queda visible a cualquiera en internet.
+  // Los defaults solo aplican si no se configuran (dev local); en
+  // producción se sobreescriben con valores reales en .env.prod.
+  docsUser: process.env.DOCS_USER ?? "admin",
+  docsPassword: process.env.DOCS_PASSWORD ?? "admin",
 };

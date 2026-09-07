@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import basicAuth from "@fastify/basic-auth";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
@@ -29,6 +31,12 @@ export async function buildApp() {
   });
 
   await app.register(cors, { origin: env.corsOrigin, credentials: true });
+  // Headers de seguridad estándar (X-Content-Type-Options, X-Frame-Options,
+  // Strict-Transport-Security, etc.). CSP desactivada: esta API solo
+  // devuelve JSON salvo /docs (Swagger UI), que necesita cargar sus propios
+  // scripts/estilos inline — una CSP estricta la rompería sin aportar nada
+  // en un servidor que no sirve HTML de negocio.
+  await app.register(helmet, { contentSecurityPolicy: false });
   // Límite generoso a nivel global: varias estaciones del mismo local pueden
   // compartir la misma IP pública, así que este número tiene que aguantar
   // tranquilo una hora pico real (~100 req/s) sin frenar el uso normal — es
@@ -45,23 +53,41 @@ export async function buildApp() {
   // para probarlos a mano pegando un Bearer token — no hay validación de
   // payload documentada por-campo todavía, pero ya es muchísimo mejor que la
   // nada que había.
-  await app.register(swagger, {
-    openapi: {
-      info: {
-        title: "API — Sistema Churrasquería (BRASA ARISP)",
-        description:
-          "Referencia de endpoints REST del servidor. Complementaria a ARCHITECTURE.md (que además documenta los eventos WebSocket, que esta vista no cubre). Para probar una ruta protegida, hacé login en POST /auth/login, copiá el token y usá 'Authorize' con 'Bearer <token>'.",
-        version: "0.1.0",
+  // /docs expone el mapa completo de la API (rutas, roles, estructura) sin
+  // necesitar login — sin esto, cualquiera en internet puede verlo. Va en un
+  // scope aparte para que el basic-auth (protege con usuario/contraseña en
+  // vez del JWT de la app, porque quien navega /docs a mano desde el
+  // navegador no tiene un token a mano) solo afecte estas rutas y no el
+  // resto de la API.
+  await app.register(async (docsApp) => {
+    await docsApp.register(basicAuth, {
+      validate: async (username, password) => {
+        if (username !== env.docsUser || password !== env.docsPassword) {
+          throw new Error("Usuario o contraseña incorrectos");
+        }
       },
-      components: {
-        securitySchemes: {
-          bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      authenticate: { realm: "Documentación de la API" },
+    });
+    docsApp.addHook("onRequest", docsApp.basicAuth);
+
+    await docsApp.register(swagger, {
+      openapi: {
+        info: {
+          title: "API — Sistema Churrasquería (BRASA ARISP)",
+          description:
+            "Referencia de endpoints REST del servidor. Complementaria a ARCHITECTURE.md (que además documenta los eventos WebSocket, que esta vista no cubre). Para probar una ruta protegida, hacé login en POST /auth/login, copiá el token y usá 'Authorize' con 'Bearer <token>'.",
+          version: "0.1.0",
         },
+        components: {
+          securitySchemes: {
+            bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+          },
+        },
+        security: [{ bearerAuth: [] }],
       },
-      security: [{ bearerAuth: [] }],
-    },
+    });
+    await docsApp.register(swaggerUi, { routePrefix: "/docs" });
   });
-  await app.register(swaggerUi, { routePrefix: "/docs" });
 
   app.get("/health", async () => ({ ok: true }));
 
