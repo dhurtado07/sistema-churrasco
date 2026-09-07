@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Al imprimir un reporte desde /admin, ocultamos la navegación y dejamos
+   solo el contenido del reporte. */
+@media print {
+  aside,
+  header,
+  .no-imprimir {
+    display: none !important;
+  }
+}

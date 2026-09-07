@@ -1,0 +1,362 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Desarrollo local: SQLite (cero configuración).
+  // Antes de desplegar a producción, cambiar a:
+  //   provider = "postgresql"
+  //   url      = env("DATABASE_URL")   // Neon / Supabase / Railway
+  // y correr `pnpm db:migrate` de nuevo contra esa base.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite no soporta enums nativos de Prisma, así que estos campos son String
+// validados en la capa de aplicación con los enums de Zod en `packages/shared`
+// (Rol, TipoConsumo, EstadoPedido). Esto también mantiene el schema portable
+// tal cual al migrar a PostgreSQL en producción, sin lógica condicional.
+// Valores válidos — Rol: cajero | cocina | parrilla | entrega | admin | impresora | empleado
+//                  TipoConsumo: LOCAL | LLEVAR
+//                  EstadoPedido: PAGADO | COMPLETADO | ENTREGADO | CANCELADO
+//                  MetodoPago: EFECTIVO | TARJETA | TRANSFERENCIA | QR
+//                  MovimientoCaja.tipo: INGRESO | EGRESO
+//                  MovimientoCaja.categoria: VENTA | COMPRA_INSUMO | PAGO_PROVEEDOR | SUELDO | SERVICIO | OTRO
+//                  CajaTurno.estado: ABIERTO | CERRADO
+//                  Asistencia.tipo: ENTRADA | SALIDA — origen: KIOSKO | MANUAL
+//                  ActivoInventario.estado: BUENO | REGULAR | MALO | BAJA
+
+// Fila única (id fijo "singleton") con qué módulos tiene habilitados este
+// negocio — no todas las churrasquerías funcionan igual: algunas solo cobran
+// y el mesero se encarga de todo, otras usan cocina+parrilla completas, etc.
+// Caja no está acá porque siempre está habilitada (es el punto de entrada).
+// También guarda los datos de marca del negocio (nombre, contacto) que se
+// muestran en tickets, login, menú público y reportes exportados.
+model Configuracion {
+  id                 String  @id @default("singleton")
+  cocinaHabilitada   Boolean @default(true)
+  parrillaHabilitada Boolean @default(true)
+  entregaHabilitada  Boolean @default(true)
+  nombreNegocio      String  @default("BRASA ARISP")
+  direccion          String?
+  telefono           String?
+  nit                String?
+  logoUrl            String?
+}
+
+model Usuario {
+  id                String        @id @default(cuid())
+  username          String        @unique
+  passwordHash      String
+  nombre            String
+  rol               String
+  activo            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  pedidos           Pedido[]
+  turnosAbiertos    CajaTurno[]   @relation("TurnosAbiertos")
+  turnosCerrados    CajaTurno[]   @relation("TurnosCerrados")
+  movimientosCaja   MovimientoCaja[]
+  compras           Compra[]
+  empleado          Empleado?
+  pedidoAuditorias  PedidoAuditoria[]
+}
+
+model Producto {
+  id               String       @id @default(cuid())
+  nombre           String
+  categoria        String
+  precio           Float
+  activo           Boolean      @default(true)
+  requiereParrilla Boolean      @default(true)
+  // Data URI (imagen ya redimensionada/comprimida en el navegador antes de
+  // subirla) — evita depender de un bucket de almacenamiento externo (S3,
+  // Cloudinary) que todavía no está configurado en este proyecto.
+  imagenUrl        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  items            ItemPedido[]
+  receta           RecetaItem[]
+}
+
+// Insumo de cocina (arroz, papa, carne, etc.) con stock — distinto de
+// ActivoInventario (bienes del local, que no se consumen). El stock sube
+// automáticamente con cada Compra y baja automáticamente con cada venta,
+// según la Receta de cada producto; también se puede corregir a mano
+// (ajustarStock) porque ninguna receta va a ser perfecta (mermas, etc.).
+model Insumo {
+  id           String       @id @default(cuid())
+  nombre       String       @unique
+  categoria    String?
+  // kg | litro | unidad | paquete — mismo dominio que CompraItem.unidad.
+  unidad       String
+  stockActual  Float        @default(0)
+  stockMinimo  Float        @default(0)
+  activo       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  compraItems  CompraItem[]
+  recetaItems  RecetaItem[]
+}
+
+// Receta (BOM) de un producto: cuánto de cada insumo consume UNA unidad
+// vendida de ese producto — es lo que permite descontar stock automático en
+// cada venta. Un producto sin receta simplemente no descuenta stock (por
+// ejemplo, una gaseosa comprada ya envasada puede no valer la pena recetar).
+model RecetaItem {
+  id                String   @id @default(cuid())
+  producto          Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  productoId        String
+  insumo            Insumo   @relation(fields: [insumoId], references: [id])
+  insumoId          String
+  cantidadPorUnidad Float
+
+  @@unique([productoId, insumoId])
+}
+
+model Cliente {
+  id       String   @id @default(cuid())
+  nombre   String
+  carnet   String?  @unique
+  creadoEn DateTime @default(now())
+  pedidos  Pedido[]
+}
+
+model Extra {
+  id         String            @id @default(cuid())
+  nombre     String
+  precio     Float
+  activo     Boolean           @default(true)
+  imagenUrl  String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  itemExtras ItemPedidoExtra[]
+}
+
+model Pedido {
+  // El id autoincremental sirve directamente como folio (orden de llegada / número de ticket).
+  id               Int          @id @default(autoincrement())
+  cliente          Cliente?     @relation(fields: [clienteId], references: [id])
+  clienteId        String?
+  // Snapshot del nombre/carnet al momento de la venta — se conserva aunque el
+  // cliente cambie de nombre o se borre después, para no alterar el histórico.
+  clienteNombre    String?
+  clienteCarnet    String?
+  tipoConsumo      String
+  // Solo aplica cuando tipoConsumo es LOCAL — a qué mesa entregar.
+  mesa             String?
+  total            Float
+  estado           String       @default("PAGADO")
+  // EFECTIVO | TARJETA | TRANSFERENCIA | QR — con qué se cobró, para poder
+  // desglosar el cierre de caja por medio de pago.
+  metodoPago       String       @default("EFECTIVO")
+  requiereParrilla Boolean
+  cocinaLista      Boolean      @default(false)
+  parrillaLista    Boolean      @default(false)
+  cajero           Usuario      @relation(fields: [cajeroId], references: [id])
+  cajeroId         String
+  items            ItemPedido[]
+  movimientosCaja  MovimientoCaja[]
+  auditorias       PedidoAuditoria[]
+  creadoEn         DateTime     @default(now())
+  cocinaListaEn    DateTime?
+  parrillaListaEn  DateTime?
+  completadoEn     DateTime?
+  entregadoEn      DateTime?
+}
+
+// Registro de qué cambió y quién lo hizo cada vez que se edita o cancela un
+// pedido — el dinero ya queda trazado vía el libro de caja, pero el detalle
+// de qué ítems cambiaron no quedaba en ningún lado (ver FUNCIONALIDADES.md).
+// Guarda snapshots completos (no un diff campo por campo) porque es más
+// simple y suficiente para auditar/explicarle a un cliente qué pasó.
+model PedidoAuditoria {
+  id           String   @id @default(cuid())
+  pedido       Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedidoId     Int
+  usuario      Usuario  @relation(fields: [usuarioId], references: [id])
+  usuarioId    String
+  accion       String // "EDITADO" | "CANCELADO"
+  itemsAntes   String // JSON: [{ nombreProducto, cantidad, precioUnitario, extras: [nombre] }]
+  itemsDespues String? // null cuando accion = "CANCELADO" (no hay "después")
+  totalAntes   Float
+  totalDespues Float?
+  creadoEn     DateTime @default(now())
+}
+
+model ItemPedido {
+  id               String            @id @default(cuid())
+  pedido           Pedido            @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  pedidoId         Int
+  producto         Producto          @relation(fields: [productoId], references: [id])
+  productoId       String
+  nombreProducto   String
+  imagenUrl        String?
+  requiereParrilla Boolean
+  cantidad         Int
+  precioUnitario   Float
+  extras           ItemPedidoExtra[]
+}
+
+model ItemPedidoExtra {
+  id           String     @id @default(cuid())
+  itemPedido   ItemPedido @relation(fields: [itemPedidoId], references: [id], onDelete: Cascade)
+  itemPedidoId String
+  extra        Extra      @relation(fields: [extraId], references: [id])
+  extraId      String
+  nombre       String
+  precio       Float
+}
+
+// ---------------------------------------------------------------------------
+// Caja y dinero
+// ---------------------------------------------------------------------------
+
+// Apertura/cierre de caja por turno — permite detectar faltantes/sobrantes
+// comparando el efectivo contado a mano contra lo que el sistema calculó que
+// debería haber (fondo inicial + ingresos en efectivo del turno).
+model CajaTurno {
+  id                String           @id @default(cuid())
+  abiertoPor        Usuario          @relation("TurnosAbiertos", fields: [abiertoPorId], references: [id])
+  abiertoPorId      String
+  fondoInicial      Float
+  abiertoEn         DateTime         @default(now())
+  estado            String           @default("ABIERTO")
+  cerradoPor        Usuario?         @relation("TurnosCerrados", fields: [cerradoPorId], references: [id])
+  cerradoPorId      String?
+  efectivoContado   Float?
+  efectivoEsperado  Float?
+  diferencia        Float?
+  notaCierre        String?
+  cerradoEn         DateTime?
+  movimientos       MovimientoCaja[]
+}
+
+// Libro de ingresos y egresos: todo movimiento de dinero del negocio, no solo
+// ventas. Nunca se edita ni se borra un registro existente — una corrección
+// se hace con un movimiento nuevo que referencia al original vía
+// `anulaMovimientoId`, para que el histórico sirva como respaldo de auditoría
+// y se pueda entregar tal cual a una contadora.
+model MovimientoCaja {
+  id                String          @id @default(cuid())
+  turno             CajaTurno?      @relation(fields: [turnoId], references: [id])
+  turnoId           String?
+  tipo              String
+  categoria         String
+  concepto          String
+  monto             Float
+  metodoPago        String?
+  pedido            Pedido?         @relation(fields: [pedidoId], references: [id])
+  pedidoId          Int?
+  compra            Compra?         @relation(fields: [compraId], references: [id])
+  compraId          String?
+  registradoPor     Usuario         @relation(fields: [registradoPorId], references: [id])
+  registradoPorId   String
+  anulaMovimiento   MovimientoCaja? @relation("AnulaMovimiento", fields: [anulaMovimientoId], references: [id])
+  anulaMovimientoId String?         @unique
+  anuladoPor        MovimientoCaja? @relation("AnulaMovimiento")
+  anulado           Boolean         @default(false)
+  creadoEn          DateTime        @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Compras, proveedores e inventario
+// ---------------------------------------------------------------------------
+
+model Proveedor {
+  id        String    @id @default(cuid())
+  nombre    String
+  contacto  String?
+  telefono  String?
+  categoria String?
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  compras   Compra[]
+}
+
+// Compra de insumos (arroz, papa, verduras, carne, etc.) — es la inversión
+// del negocio, distinta de la venta. Cada compra genera automáticamente un
+// egreso en el libro de caja (MovimientoCaja).
+model Compra {
+  id              String           @id @default(cuid())
+  proveedor       Proveedor?       @relation(fields: [proveedorId], references: [id])
+  proveedorId     String?
+  proveedorNombre String?
+  fecha           DateTime         @default(now())
+  total           Float
+  notas           String?
+  registradoPor   Usuario          @relation(fields: [registradoPorId], references: [id])
+  registradoPorId String
+  items           CompraItem[]
+  movimientosCaja MovimientoCaja[]
+  createdAt       DateTime         @default(now())
+}
+
+model CompraItem {
+  id             String  @id @default(cuid())
+  compra         Compra  @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  compraId       String
+  // Snapshot del nombre al momento de la compra (igual que clienteNombre en
+  // Pedido) — se conserva aunque el insumo se renombre después.
+  insumo         String
+  categoria      String?
+  cantidad       Float
+  unidad         String
+  precioUnitario Float
+  subtotal       Float
+  // Opcional: si se linkeó a un insumo del catálogo, la compra repone stock
+  // automáticamente. Sin link, es una compra "suelta" sin control de stock
+  // (compatible con compras registradas antes de este catálogo).
+  insumoRef      Insumo? @relation(fields: [insumoId], references: [id])
+  insumoId       String?
+}
+
+// Bienes del local (sillas, mesas, televisores, equipo de cocina) — distinto
+// del inventario de insumos de cocina, que se consume y se repone seguido.
+model ActivoInventario {
+  id               String    @id @default(cuid())
+  nombre           String
+  categoria        String?
+  cantidad         Int       @default(1)
+  estado           String    @default("BUENO")
+  valorUnitario    Float?
+  fechaAdquisicion DateTime?
+  notas            String?
+  activo           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Empleados y asistencia
+// ---------------------------------------------------------------------------
+
+// Datos de empleo de un Usuario con rol "empleado" — el login (usuario y
+// contraseña) vive en Usuario, esto agrega puesto/sueldo/fecha de ingreso.
+model Empleado {
+  id                String       @id @default(cuid())
+  usuario           Usuario      @relation(fields: [usuarioId], references: [id])
+  usuarioId         String       @unique
+  puesto            String
+  sueldo            Float
+  fechaContratacion DateTime?
+  telefono          String?
+  activo            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  marcas            Asistencia[]
+  // PIN opcional (4-6 dígitos, hasheado) que se pide además de la sesión al
+  // marcar asistencia — evita que alguien marque por otro compartiendo un
+  // dispositivo/sesión ya logueada. Si es null, no se exige (compatibilidad
+  // con empleados que todavía no tienen uno configurado).
+  pinHash           String?
+}
+
+// Marca de entrada/salida de un empleado — las horas trabajadas se calculan
+// emparejando marcas ENTRADA→SALIDA por día, no se guardan aparte.
+model Asistencia {
+  id         String   @id @default(cuid())
+  empleado   Empleado @relation(fields: [empleadoId], references: [id], onDelete: Cascade)
+  empleadoId String
+  tipo       String
+  momento    DateTime @default(now())
+  origen     String   @default("KIOSKO")
+  notas      String?
+}
