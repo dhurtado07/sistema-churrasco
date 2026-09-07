@@ -21,6 +21,12 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: DEBUG temporal — verificar destino
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'test -d "'"${{ secrets.DEPLOY_PATH }}"'" && echo DIR_EXISTS || echo DIR_MISSING; whoami; pwd'
+
       - name: Copiar el código al VPS
         run: |
           rsync -az --delete \
