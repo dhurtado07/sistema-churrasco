@@ -28,6 +28,10 @@ export async function buildApp() {
     // Los productos pueden traer una imagen como data URI en el body JSON —
     // el default de Fastify (1MB) se queda corto para eso.
     bodyLimit: 6 * 1024 * 1024,
+    // Detrás de Caddy (y potencialmente Cloudflare delante de Caddy), la
+    // conexión que ve Node siempre es la del proxy — sin esto, request.ip
+    // sería siempre la misma IP interna para todo el mundo.
+    trustProxy: true,
   });
 
   await app.register(cors, { origin: env.corsOrigin, credentials: true });
@@ -43,7 +47,18 @@ export async function buildApp() {
   // solo para frenar un cliente totalmente descontrolado. El login tiene su
   // propio límite mucho más estricto por ruta (ver modules/auth/routes.ts)
   // para frenar fuerza bruta de contraseñas, que es el riesgo real acá.
-  await app.register(rateLimit, { global: true, max: 6000, timeWindow: "1 minute" });
+  await app.register(rateLimit, {
+    global: true,
+    max: 6000,
+    timeWindow: "1 minute",
+    // Si el tráfico pasa por Cloudflare, Caddy siempre ve la IP del borde
+    // de Cloudflare como origen de la conexión (no la del cliente real) —
+    // "CF-Connecting-IP" es el header que Cloudflare agrega con la IP real,
+    // así que hay que usarlo para que el límite aplique por cliente real y
+    // no le pegue a todo el mundo por igual. Si no viene (sin Cloudflare
+    // delante, ej. en dev), cae a la IP normal de la conexión.
+    keyGenerator: (request) => (request.headers["cf-connecting-ip"] as string) || request.ip,
+  });
   await app.register(authPlugin);
 
   // Documentación navegable de la API en /docs (ver ARCHITECTURE.md sección
