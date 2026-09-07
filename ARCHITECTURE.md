@@ -291,8 +291,11 @@ flowchart LR
     Admin <-. WebSocket/HTTPS .-> API
 ```
 
-Backend en Railway/Render/Fly.io, frontend estático en Vercel/Netlify, DB en
-Neon/Supabase/Railway Postgres.
+Implementado como: un VPS propio corriendo Docker Compose — Postgres,
+servidor (Fastify) y Caddy (sirve la web estática + proxy reverso + HTTPS
+automático) en el mismo host, ver sección 14. (Railway/Render/Fly.io +
+Neon/Supabase/Vercel eran alternativas evaluadas, pero se optó por un VPS
+propio con despliegue automático vía GitHub Actions.)
 
 ## 10. Estructura de carpetas
 
@@ -355,10 +358,24 @@ adelante si el volumen lo justifica.
 
 ### Estado de la base de datos
 
-Desarrollo: SQLite (cero configuración). El schema (`apps/server/prisma/schema.prisma`)
-ya evita cualquier característica específica de SQLite (no usa enums nativos,
-por ejemplo) para ser portable a PostgreSQL sin cambios de modelo — ver
-`README.md` para los pasos exactos de migración cuando haya una connection
-string de Neon/Supabase/Railway disponible. No se migró todavía porque no hay
-una base Postgres provisionada; el cambio en sí es mecánico (cambiar
-`provider`, correr `prisma migrate dev` de nuevo) una vez haya una.
+**PostgreSQL, tanto en desarrollo como en producción** ✅ — en desarrollo
+corre en un contenedor local (`docker-compose.yml`, `pnpm db:up`); en
+producción, en su propio contenedor dentro de `docker-compose.prod.yml` en el
+VPS. Se migró desde SQLite (usado en las primeras fases del proyecto) porque
+las pruebas de carga mostraron que el límite de un solo escritor de SQLite
+se volvía un cuello de botella real bajo ráfagas concurrentes (varias
+estaciones cobrando/marcando "listo" al mismo tiempo); con Postgres esas
+mismas pruebas corren sin fallas y bastante más rápido. El cambio fue
+puramente de configuración (`provider` en `schema.prisma` + `DATABASE_URL`),
+sin tocar modelos — el schema ya estaba escrito de forma portable (sin enums
+nativos de SQLite) justamente para esto.
+
+## 14. Despliegue automático (CI/CD)
+
+Cada merge a `main` dispara `.github/workflows/deploy.yml`: copia el código
+al VPS por SSH y levanta `docker-compose.prod.yml` (Postgres + servidor +
+Caddy). Caddy sirve la web estática en el dominio raíz, hace de proxy
+reverso hacia el servidor en `api.<dominio>`, y saca/renueva el certificado
+HTTPS solo (Let's Encrypt) sin configuración manual. Ver `README.md` sección
+"Despliegue a producción" para la puesta en marcha inicial del VPS (llave
+SSH dedicada, secretos de GitHub, variables de entorno).

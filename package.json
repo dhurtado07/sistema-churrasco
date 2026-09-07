@@ -11,6 +11,8 @@
     "dev:web": "pnpm --filter web dev",
     "dev:print-agent": "pnpm --filter print-agent dev",
     "build": "pnpm --filter shared build && pnpm --filter server build && pnpm --filter web build && pnpm --filter print-agent build",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "db:migrate": "pnpm --filter server db:migrate",
     "db:seed": "pnpm --filter server db:seed",
     "db:studio": "pnpm --filter server db:studio"

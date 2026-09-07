@@ -3,12 +3,13 @@ generator client {
 }
 
 datasource db {
-  // Desarrollo local: SQLite (cero configuración).
-  // Antes de desplegar a producción, cambiar a:
-  //   provider = "postgresql"
-  //   url      = env("DATABASE_URL")   // Neon / Supabase / Railway
-  // y correr `pnpm db:migrate` de nuevo contra esa base.
-  provider = "sqlite"
+  // Producción: PostgreSQL (ver docker-compose.prod.yml). Desarrollo local:
+  // Postgres también, corriendo en Docker (ver docker-compose.yml en la raíz
+  // — "pnpm db:up" antes de "pnpm dev"), para que el comportamiento sea el
+  // mismo en ambos lados. El schema se escribió sin enums nativos ni otras
+  // particularidades de un motor específico (ver nota abajo), así que este
+  // cambio fue puramente de configuración, sin tocar modelos.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

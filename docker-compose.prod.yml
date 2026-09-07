@@ -1,0 +1,53 @@
+# Producción — todo el stack en un VPS. Se despliega con:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# (el pipeline de GitHub Actions hace exactamente esto, ver .github/workflows/deploy.yml)
+#
+# .env.prod vive SOLO en el servidor (nunca en git — ver .env.prod.example
+# para la lista de variables que necesita).
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: churrasco
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - churrasco_pg_data:/var/lib/postgresql/data
+    # Sin "ports": Postgres no necesita ser alcanzable desde fuera del VPS,
+    # solo desde el contenedor "server" (misma red interna de Docker).
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/churrasco
+      PORT: 4000
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Certificados de Let's Encrypt y estado de Caddy — deben persistir
+      # entre despliegues, si no se re-piden certificados nuevos cada vez.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  churrasco_pg_data:
+  caddy_data:
+  caddy_config:

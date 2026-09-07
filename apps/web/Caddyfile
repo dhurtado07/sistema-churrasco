@@ -1,0 +1,16 @@
+# Caddy sirve la web estática (build de Vite) en el dominio raíz y hace de
+# proxy reverso hacia el servidor Fastify en el subdominio api.* — HTTPS con
+# Let's Encrypt es automático (Caddy lo maneja solo en cuanto el DNS apunte
+# acá), sin configuración adicional ni renovación manual.
+
+brasaarisp.com, www.brasaarisp.com {
+	root * /srv/web
+	encode gzip
+	# SPA: cualquier ruta que no sea un archivo real cae a index.html (React Router).
+	try_files {path} /index.html
+	file_server
+}
+
+api.brasaarisp.com {
+	reverse_proxy server:4000
+}

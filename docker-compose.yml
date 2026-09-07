@@ -1,0 +1,20 @@
+# Desarrollo local: SOLO Postgres. El servidor y la web se siguen corriendo
+# con `pnpm dev` (más rápido para iterar que reconstruir contenedores cada
+# vez). Para producción ver docker-compose.prod.yml, que sí empaqueta todo.
+#
+# Uso: `pnpm db:up` (equivale a `docker compose up -d`), después
+# `pnpm db:migrate` y `pnpm db:seed` la primera vez.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: churrasco
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - churrasco_pg_dev:/var/lib/postgresql/data
+
+volumes:
+  churrasco_pg_dev:
