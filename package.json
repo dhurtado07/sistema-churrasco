@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter server --filter web dev",
+    "dev": "pnpm --parallel --filter shared --filter server --filter web dev",
     "dev:server": "pnpm --filter server dev",
     "dev:web": "pnpm --filter web dev",
     "dev:print-agent": "pnpm --filter print-agent dev",
