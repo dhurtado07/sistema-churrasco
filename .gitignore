@@ -10,3 +10,6 @@ apps/server/prisma/dev.db
 apps/server/prisma/dev.db-journal
 .vite/
 apps/print-agent/tickets/
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
