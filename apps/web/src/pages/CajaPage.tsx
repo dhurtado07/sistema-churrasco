@@ -275,11 +275,16 @@ export function CajaPage() {
               misma altura sin importar si el nombre ocupa una o dos líneas —
               así el cuadrito y la imagen se ven siempre del mismo tamaño. */}
           {tabEfectiva === "Extras" ? (
-            <div className="grid grid-cols-2 gap-2 auto-rows-fr sm:grid-cols-3 md:grid-cols-4">
+            <>
+              {/* Fuera del grid: si estuviera adentro, auto-rows-fr obliga a
+                  esta fila de un solo renglón de texto a medir lo mismo que
+                  las tarjetas de al lado (bastante más altas), dejando un
+                  espacio en blanco grande debajo del mensaje. */}
               {carrito.length === 0 && (
-                <p className="col-span-full text-sm text-neutral-500">Agregá un plato primero — el extra se suma al último que toques.</p>
+                <p className="text-sm text-neutral-500">Agregá un plato primero — el extra se suma al último que toques.</p>
               )}
-              {extras.map((extra) => {
+              <div className="grid grid-cols-2 gap-2 auto-rows-fr sm:grid-cols-3 md:grid-cols-4">
+                {extras.map((extra) => {
                 const ultimaLinea = carrito[carrito.length - 1];
                 const yaAgregado = !!ultimaLinea?.extraIds.includes(extra.id);
                 return (
@@ -310,8 +315,9 @@ export function CajaPage() {
                   </button>
                 );
               })}
-              {extras.length === 0 && <p className="col-span-full text-sm text-neutral-500">No hay extras cargados.</p>}
-            </div>
+                {extras.length === 0 && <p className="col-span-full text-sm text-neutral-500">No hay extras cargados.</p>}
+              </div>
+            </>
           ) : (
             <div className="grid grid-cols-2 gap-2 auto-rows-fr sm:grid-cols-3 md:grid-cols-4">
               {productosDeLaTab.map((producto) => (
