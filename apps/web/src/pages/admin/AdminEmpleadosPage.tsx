@@ -10,6 +10,22 @@ import { StatCard } from "../../components/StatCard";
 import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
 import { ConfirmActionModal } from "../../components/ConfirmActionModal";
 
+const ROLES_EMPLEADO: { valor: Empleado["rol"]; etiqueta: string }[] = [
+  { valor: "empleado", etiqueta: "Ninguno (solo asistencia)" },
+  { valor: "cajero", etiqueta: "Caja" },
+  { valor: "cocina", etiqueta: "Cocina" },
+  { valor: "parrilla", etiqueta: "Parrilla" },
+  { valor: "entrega", etiqueta: "Entrega" },
+];
+
+const ROL_EMPLEADO_LABEL: Record<Empleado["rol"], string> = {
+  empleado: "Sin acceso a estación",
+  cajero: "Caja",
+  cocina: "Cocina",
+  parrilla: "Parrilla",
+  entrega: "Entrega",
+};
+
 export function AdminEmpleadosPage() {
   const { token } = useAuth();
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -124,6 +140,16 @@ export function AdminEmpleadosPage() {
                 </p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-medium text-neutral-700">Bs {formatBs(e.sueldo)}/mes</span>
+                  <Badge
+                    tono={e.rol === "empleado" ? "gris" : "azul"}
+                    hint={
+                      e.rol === "empleado"
+                        ? "No tiene acceso a ninguna pantalla de trabajo — solo puede marcar asistencia."
+                        : `Además de marcar asistencia, tiene acceso a la pantalla de ${ROL_EMPLEADO_LABEL[e.rol]}.`
+                    }
+                  >
+                    {ROL_EMPLEADO_LABEL[e.rol]}
+                  </Badge>
                   <Badge tono={e.tienePin ? "verde" : "gris"} hint="Si tiene PIN, se le pide además de la sesión al marcar asistencia.">
                     PIN {e.tienePin ? "Sí" : "No"}
                   </Badge>
@@ -194,6 +220,7 @@ export function AdminEmpleadosPage() {
 }
 
 function EmpleadoModal({ token, onCerrar, onListo }: { token: string | null; onCerrar: () => void; onListo: () => void }) {
+  const [rol, setRol] = useState<Empleado["rol"]>("empleado");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,6 +240,7 @@ function EmpleadoModal({ token, onCerrar, onListo }: { token: string | null; onC
           sueldo: Number(form.get("sueldo")),
           telefono: String(form.get("telefono") ?? "").trim() || undefined,
           pin: String(form.get("pin") ?? "").trim() || undefined,
+          rol,
         }),
       });
       onListo();
@@ -230,6 +258,27 @@ function EmpleadoModal({ token, onCerrar, onListo }: { token: string | null; onC
         <IconInput icon={IconTag} name="puesto" placeholder="Puesto (ej. Parrillero, Mesero)" required />
         <IconInput icon={IconCoin} name="sueldo" type="number" min="0" step="0.01" placeholder="Sueldo mensual" required />
         <IconInput icon={IconUser} name="telefono" placeholder="Teléfono (opcional)" />
+        <div className="border-t border-neutral-200 pt-3">
+          <label className="mb-1 block text-xs font-medium text-neutral-600">Acceso a una estación (opcional)</label>
+          <p className="mb-2 text-xs text-neutral-500">
+            Si trabaja también en una estación (caja, cocina, parrilla o entrega), elegí cuál — va a poder entrar ahí
+            además de marcar su asistencia. Si no, dejalo en "Ninguno".
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {ROLES_EMPLEADO.map((r) => (
+              <button
+                key={r.valor}
+                type="button"
+                onClick={() => setRol(r.valor)}
+                className={`rounded-lg px-2.5 py-2 text-left text-xs font-medium ${
+                  rol === r.valor ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700"
+                }`}
+              >
+                {r.etiqueta}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="border-t border-neutral-200 pt-3">
           <p className="mb-2 text-xs text-neutral-500">
             Usuario y contraseña para que marque su entrada/salida en /asistencia.
@@ -269,6 +318,7 @@ function EditarEmpleadoModal({
   onCerrar: () => void;
   onListo: () => void;
 }) {
+  const [rol, setRol] = useState<Empleado["rol"]>(empleado.rol);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,6 +337,7 @@ function EditarEmpleadoModal({
           sueldo: Number(form.get("sueldo")),
           password: nuevaPassword || undefined,
           pin: nuevoPin || undefined,
+          rol,
         }),
       });
       onListo();
@@ -302,6 +353,23 @@ function EditarEmpleadoModal({
       <form onSubmit={onSubmit} className="space-y-3">
         <IconInput icon={IconTag} name="puesto" defaultValue={empleado.puesto} required />
         <IconInput icon={IconCoin} name="sueldo" type="number" min="0" step="0.01" defaultValue={empleado.sueldo} required />
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-600">Acceso a una estación</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {ROLES_EMPLEADO.map((r) => (
+              <button
+                key={r.valor}
+                type="button"
+                onClick={() => setRol(r.valor)}
+                className={`rounded-lg px-2.5 py-2 text-left text-xs font-medium ${
+                  rol === r.valor ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700"
+                }`}
+              >
+                {r.etiqueta}
+              </button>
+            ))}
+          </div>
+        </div>
         <IconInput icon={IconLock} name="password" type="password" placeholder="Nueva contraseña (opcional)" />
         <IconInput
           icon={IconLock}

@@ -5,7 +5,7 @@ import { prisma } from "../../db.js";
 
 export class AsistenciaValidationError extends Error {}
 
-async function obtenerEmpleadoPorUsuario(usuarioId: string) {
+export async function obtenerEmpleadoPorUsuario(usuarioId: string) {
   const empleado = await prisma.empleado.findUnique({ where: { usuarioId }, include: { usuario: true } });
   if (!empleado) throw new AsistenciaValidationError("Esta cuenta no está asociada a un empleado.");
   return empleado;
@@ -99,6 +99,20 @@ export async function listarHorasTrabajadas(filtros: {
     horas: calcularHoras(empleado.marcas),
     marcas: empleado.marcas.map((m) => toMarcaDTO(m, empleado.usuario.nombre)),
   }));
+}
+
+/** Un empleado viendo sus propias horas — nunca las de otro. Reusa
+ * listarHorasTrabajadas pero primero resuelve el Empleado a partir de quién
+ * está logueado, no de un id que llegue del cliente. */
+export async function obtenerMisHoras(
+  usuarioId: string,
+  filtros: { desde?: Date; hasta?: Date },
+): Promise<HorasTrabajadasEmpleado> {
+  const empleado = await obtenerEmpleadoPorUsuario(usuarioId);
+  // Filtrando por un empleadoId puntual que ya sabemos que existe,
+  // listarHorasTrabajadas siempre devuelve exactamente esa una fila.
+  const [fila] = await listarHorasTrabajadas({ empleadoId: empleado.id, desde: filtros.desde, hasta: filtros.hasta });
+  return fila;
 }
 
 export async function generarExcelNomina(desde: Date, hasta: Date): Promise<ExcelJS.Buffer> {

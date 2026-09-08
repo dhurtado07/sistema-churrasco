@@ -5,11 +5,17 @@ import {
   generarExcelNomina,
   listarHorasTrabajadas,
   marcarPropia,
+  obtenerMisHoras,
   obtenerProximaMarca,
 } from "./service.js";
 
 export async function asistenciaRoutes(fastify: FastifyInstance) {
-  fastify.get("/asistencia/proxima-marca", { preHandler: [fastify.requireRole("empleado")] }, async (request, reply) => {
+  // Antes exigía rol==="empleado" exactamente — pero ahora un empleado puede
+  // tener además un rol de estación (cajero/cocina/parrilla/entrega) y debe
+  // poder marcar su asistencia igual. El gate real ya lo hace el servicio
+  // (obtenerEmpleadoPorUsuario tira 409 si esta cuenta no tiene un Empleado
+  // asociado, sin importar su rol) — acá alcanza con estar logueado.
+  fastify.get("/asistencia/proxima-marca", { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       return await obtenerProximaMarca(request.user.sub);
     } catch (error) {
@@ -18,13 +24,28 @@ export async function asistenciaRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post("/asistencia/marcar", { preHandler: [fastify.requireRole("empleado")] }, async (request, reply) => {
+  fastify.post("/asistencia/marcar", { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const parsed = marcarAsistenciaSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
     try {
       const marca = await marcarPropia(request.user.sub, parsed.data.notas, parsed.data.pin);
       return reply.code(201).send(marca);
+    } catch (error) {
+      if (error instanceof AsistenciaValidationError) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  // Un empleado viendo sus propias horas/días trabajados — nunca los de otro
+  // (el empleadoId sale de la sesión, no de un parámetro que mande el cliente).
+  fastify.get("/asistencia/mis-horas", { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { desde, hasta } = request.query as { desde?: string; hasta?: string };
+    try {
+      return await obtenerMisHoras(request.user.sub, {
+        desde: desde ? new Date(desde) : undefined,
+        hasta: hasta ? new Date(hasta) : undefined,
+      });
     } catch (error) {
       if (error instanceof AsistenciaValidationError) return reply.code(409).send({ error: error.message });
       throw error;

@@ -116,6 +116,9 @@ export interface Usuario {
   username: string;
   rol: Rol;
   nombre: string;
+  /** true si esta cuenta tiene un registro de Empleado asociado — puede
+   * marcar asistencia y ver sus propias horas sin importar su rol. */
+  tieneEmpleado: boolean;
 }
 
 /** Cuenta de estación (cajero, cocina, parrilla, entrega, admin, impresora) —
@@ -276,6 +279,10 @@ export interface Empleado {
   /** true si tiene un PIN configurado para confirmar identidad al marcar
    * asistencia (nunca se expone el PIN en sí, solo si existe). */
   tienePin: boolean;
+  /** Rol de estación asignado — "empleado" (sin ninguno) significa que solo
+   * puede marcar asistencia y ver sus propias horas, sin acceso a ninguna
+   * pantalla de trabajo. Con otro rol, además entra a esa estación. */
+  rol: "empleado" | "cajero" | "cocina" | "parrilla" | "entrega";
 }
 
 export interface MarcaAsistencia {

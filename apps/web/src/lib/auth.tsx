@@ -7,6 +7,9 @@ export interface SesionUsuario {
   username: string;
   rol: Rol;
   nombre: string;
+  /** true si esta cuenta tiene un Empleado asociado — puede marcar
+   * asistencia y ver sus propias horas sin importar su rol. */
+  tieneEmpleado: boolean;
 }
 
 interface AuthState {

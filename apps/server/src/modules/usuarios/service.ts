@@ -22,7 +22,10 @@ function toDTO(usuario: { id: string; username: string; nombre: string; rol: str
 
 export async function listarUsuariosEstacion(): Promise<UsuarioEstacionDTO[]> {
   const usuarios = await prisma.usuario.findMany({
-    where: { rol: { in: ROLES_ESTACION } },
+    // Un Empleado puede ahora tener un rol de estación (ver /admin/empleados)
+    // — esa cuenta se gestiona ahí, no acá, aunque su rol coincida con uno
+    // de ROLES_ESTACION. `empleado: null` la excluye de esta lista.
+    where: { rol: { in: ROLES_ESTACION }, empleado: null },
     orderBy: { createdAt: "asc" },
   });
   return usuarios.map(toDTO);
@@ -47,8 +50,8 @@ export async function actualizarUsuarioEstacion(
   id: string,
   input: ActualizarUsuarioEstacionInput,
 ): Promise<UsuarioEstacionDTO> {
-  const actual = await prisma.usuario.findUnique({ where: { id } });
-  if (!actual || !ROLES_ESTACION.includes(actual.rol as Rol)) {
+  const actual = await prisma.usuario.findUnique({ where: { id }, include: { empleado: true } });
+  if (!actual || !ROLES_ESTACION.includes(actual.rol as Rol) || actual.empleado) {
     throw new UsuarioValidationError("Cuenta de estación no encontrada.");
   }
 

@@ -22,6 +22,13 @@ export const cambiarMiPasswordSchema = z.object({
 
 export const rolEstacionSchema = z.enum(["cajero", "cocina", "parrilla", "entrega", "admin", "impresora"]);
 
+// Rol de estación que puede tener un Empleado (persona individual) — puede
+// no tener ninguno ("empleado" = solo marca asistencia, sin acceso a ninguna
+// pantalla de trabajo), o el de una estación puntual. Nunca admin/impresora
+// desde este flujo — esos son roles técnicos/de estación compartida, no algo
+// que se le asigne a una persona vía "Empleados".
+export const rolEmpleadoSchema = z.enum(["empleado", "cajero", "cocina", "parrilla", "entrega"]);
+
 export const crearUsuarioEstacionSchema = z.object({
   username: z.string().min(3),
   password: z.string().min(6),
@@ -244,6 +251,10 @@ export const crearEmpleadoSchema = z.object({
   fechaContratacion: z.string().datetime().optional(),
   telefono: z.string().min(1).optional(),
   pin: pinSchema.optional(),
+  // Sin rol asignado ("empleado", el default): solo puede marcar asistencia
+  // y ver sus propias horas. Con un rol de estación, además accede a esa
+  // pantalla de trabajo (como cualquier cuenta de esa estación).
+  rol: rolEmpleadoSchema.default("empleado"),
 });
 
 export const actualizarEmpleadoSchema = z.object({
@@ -254,6 +265,7 @@ export const actualizarEmpleadoSchema = z.object({
   activo: z.boolean().optional(),
   password: z.string().min(6).optional(),
   pin: pinSchema.optional(),
+  rol: rolEmpleadoSchema.optional(),
 });
 
 export const marcarAsistenciaSchema = z.object({
@@ -282,6 +294,7 @@ export type ActualizarEmpleadoInput = z.infer<typeof actualizarEmpleadoSchema>;
 export type MarcarAsistenciaInput = z.infer<typeof marcarAsistenciaSchema>;
 export type CambiarMiPasswordInput = z.infer<typeof cambiarMiPasswordSchema>;
 export type RolEstacion = z.infer<typeof rolEstacionSchema>;
+export type RolEmpleado = z.infer<typeof rolEmpleadoSchema>;
 export type CrearUsuarioEstacionInput = z.infer<typeof crearUsuarioEstacionSchema>;
 export type ActualizarUsuarioEstacionInput = z.infer<typeof actualizarUsuarioEstacionSchema>;
 export type UnidadInsumo = z.infer<typeof unidadInsumoSchema>;

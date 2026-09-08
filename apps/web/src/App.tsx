@@ -38,7 +38,7 @@ export function App() {
             <Route
               path="/asistencia"
               element={
-                <ProtectedRoute roles={["empleado"]}>
+                <ProtectedRoute soloEmpleado>
                   <AsistenciaKioskoPage />
                 </ProtectedRoute>
               }

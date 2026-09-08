@@ -9,6 +9,10 @@ export interface JwtPayload {
   username: string;
   rol: Rol;
   nombre: string;
+  /** true si esta cuenta tiene un Empleado asociado — puede marcar
+   * asistencia y ver sus propias horas sin importar su rol. Se calcula una
+   * sola vez al loguearse (ver auth/routes.ts), no en cada request. */
+  tieneEmpleado: boolean;
 }
 
 declare module "@fastify/jwt" {

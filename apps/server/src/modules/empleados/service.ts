@@ -22,6 +22,7 @@ function toDTO(empleado: EmpleadoConRelaciones): EmpleadoDTO {
     telefono: empleado.telefono,
     activo: empleado.activo,
     tienePin: Boolean(empleado.pinHash),
+    rol: empleado.usuario.rol as EmpleadoDTO["rol"],
   };
 }
 
@@ -40,7 +41,7 @@ export async function crearEmpleado(input: CrearEmpleadoInput): Promise<Empleado
   try {
     const empleado = await prisma.$transaction(async (tx) => {
       const usuario = await tx.usuario.create({
-        data: { username: input.username, passwordHash, nombre: input.nombre, rol: "empleado" },
+        data: { username: input.username, passwordHash, nombre: input.nombre, rol: input.rol ?? "empleado" },
       });
       return tx.empleado.create({
         data: {
@@ -67,18 +68,17 @@ export async function actualizarEmpleado(id: string, input: ActualizarEmpleadoIn
   const empleado = await prisma.empleado.findUnique({ where: { id } });
   if (!empleado) throw new EmpleadoValidationError("Empleado no encontrado");
 
-  const { nombre, password, pin, ...datosEmpleado } = input;
-  if (nombre || password) {
+  const { nombre, password, pin, rol, ...datosEmpleado } = input;
+  if (nombre || password || rol || input.activo !== undefined) {
     await prisma.usuario.update({
       where: { id: empleado.usuarioId },
       data: {
         ...(nombre ? { nombre } : {}),
         ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+        ...(rol ? { rol } : {}),
         ...(input.activo !== undefined ? { activo: input.activo } : {}),
       },
     });
-  } else if (input.activo !== undefined) {
-    await prisma.usuario.update({ where: { id: empleado.usuarioId }, data: { activo: input.activo } });
   }
 
   const actualizado = await prisma.empleado.update({

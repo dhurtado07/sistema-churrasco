@@ -32,8 +32,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
 
       const rol = usuario.rol as Rol;
+      const empleado = await prisma.empleado.findUnique({ where: { usuarioId: usuario.id }, select: { id: true } });
+      const tieneEmpleado = Boolean(empleado);
       const token = fastify.jwt.sign(
-        { sub: usuario.id, username: usuario.username, rol, nombre: usuario.nombre },
+        { sub: usuario.id, username: usuario.username, rol, nombre: usuario.nombre, tieneEmpleado },
         { expiresIn: "12h" },
       );
 
@@ -44,6 +46,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           username: usuario.username,
           rol,
           nombre: usuario.nombre,
+          tieneEmpleado,
         },
       });
     },
