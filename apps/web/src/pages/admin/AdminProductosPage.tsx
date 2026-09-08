@@ -5,9 +5,14 @@ import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
 import { resizeImageToDataUrl } from "../../lib/image";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconAlerta, IconCamera, IconCheck, IconCoin, IconFolder, IconPlus, IconPower, IconTag, IconTrash } from "../../components/icons";
+import { ImagenProducto } from "../../components/ImagenProducto";
+import { ConfirmActionModal } from "../../components/ConfirmActionModal";
+
+type ConfirmacionToggle = { tipo: "producto"; item: Producto } | { tipo: "extra"; item: Extra };
 
 export function AdminProductosPage() {
   const { token } = useAuth();
@@ -19,6 +24,9 @@ export function AdminProductosPage() {
   const [modalProductoAbierto, setModalProductoAbierto] = useState(false);
   const [modalExtraAbierto, setModalExtraAbierto] = useState(false);
   const [productoReceta, setProductoReceta] = useState<Producto | null>(null);
+  const [confirmacionToggle, setConfirmacionToggle] = useState<ConfirmacionToggle | null>(null);
+  const [guardandoToggle, setGuardandoToggle] = useState(false);
+  const [errorToggle, setErrorToggle] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<{ productos: Producto[]; extras: Extra[] }>("/admin/menu", token).then((data) => {
@@ -40,18 +48,21 @@ export function AdminProductosPage() {
     };
   }, [socket]);
 
-  async function toggleProducto(producto: Producto) {
-    await apiFetch(`/admin/productos/${producto.id}`, token, {
-      method: "PATCH",
-      body: JSON.stringify({ activo: !producto.activo }),
-    });
-  }
-
-  async function toggleExtra(extra: Extra) {
-    await apiFetch(`/admin/extras/${extra.id}`, token, {
-      method: "PATCH",
-      body: JSON.stringify({ activo: !extra.activo }),
-    });
+  async function confirmarToggle() {
+    if (!confirmacionToggle) return;
+    setGuardandoToggle(true);
+    setErrorToggle(null);
+    try {
+      const { tipo, item } = confirmacionToggle;
+      const ruta = tipo === "producto" ? `/admin/productos/${item.id}` : `/admin/extras/${item.id}`;
+      await apiFetch(ruta, token, { method: "PATCH", body: JSON.stringify({ activo: !item.activo }) });
+      setConfirmacionToggle(null);
+      // El cambio llega solo por WebSocket (menu:actualizado) a todas las pantallas conectadas.
+    } catch (err) {
+      setErrorToggle(err instanceof ApiError ? err.message : "No se pudo cambiar el estado");
+    } finally {
+      setGuardandoToggle(false);
+    }
   }
 
   return (
@@ -75,21 +86,18 @@ export function AdminProductosPage() {
         <ul className="divide-y divide-neutral-100">
           {productos.map((producto) => (
             <li key={producto.id} className="flex items-center gap-3 py-2">
-              {producto.imagenUrl ? (
-                <img
-                  src={producto.imagenUrl}
-                  alt={producto.nombre}
-                  className="h-12 w-12 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <div className="h-12 w-12 shrink-0 rounded-lg bg-neutral-100" />
-              )}
+              <ImagenProducto
+                imagenUrl={producto.imagenUrl}
+                nombre={producto.nombre}
+                categoria={producto.categoria}
+                className="h-12 w-12 shrink-0 rounded-lg"
+              />
               <div className="min-w-0 flex-1">
                 <p className={`font-medium ${producto.activo ? "text-neutral-900" : "text-neutral-400 line-through"}`}>
                   {producto.nombre}
                 </p>
                 <p className="text-xs text-neutral-500">
-                  {producto.categoria} · Bs {producto.precio.toFixed(2)}
+                  {producto.categoria} · Bs {formatBs(producto.precio)}
                   {producto.requiereParrilla ? " · parrilla" : ""}
                 </p>
               </div>
@@ -102,7 +110,7 @@ export function AdminProductosPage() {
                 Receta
               </button>
               <button
-                onClick={() => toggleProducto(producto)}
+                onClick={() => setConfirmacionToggle({ tipo: "producto", item: producto })}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
               >
                 <IconPower width={14} height={14} />
@@ -129,20 +137,16 @@ export function AdminProductosPage() {
         <ul className="divide-y divide-neutral-100">
           {extras.map((extra) => (
             <li key={extra.id} className="flex items-center gap-3 py-2">
-              {extra.imagenUrl ? (
-                <img
-                  src={extra.imagenUrl}
-                  alt={extra.nombre}
-                  className="h-12 w-12 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <div className="h-12 w-12 shrink-0 rounded-lg bg-neutral-100" />
-              )}
+              <ImagenProducto
+                imagenUrl={extra.imagenUrl}
+                nombre={extra.nombre}
+                className="h-12 w-12 shrink-0 rounded-lg"
+              />
               <p className={`flex-1 font-medium ${extra.activo ? "text-neutral-900" : "text-neutral-400 line-through"}`}>
-                {extra.nombre} · Bs {extra.precio.toFixed(2)}
+                {extra.nombre} · Bs {formatBs(extra.precio)}
               </p>
               <button
-                onClick={() => toggleExtra(extra)}
+                onClick={() => setConfirmacionToggle({ tipo: "extra", item: extra })}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
               >
                 <IconPower width={14} height={14} />
@@ -164,6 +168,34 @@ export function AdminProductosPage() {
           producto={productoReceta}
           insumos={insumos}
           onCerrar={() => setProductoReceta(null)}
+        />
+      )}
+      {confirmacionToggle && (
+        <ConfirmActionModal
+          titulo={
+            confirmacionToggle.item.activo
+              ? `Desactivar ${confirmacionToggle.tipo === "producto" ? "producto" : "extra"}`
+              : `Activar ${confirmacionToggle.tipo === "producto" ? "producto" : "extra"}`
+          }
+          mensaje={
+            confirmacionToggle.item.activo ? (
+              <>
+                ¿Desactivar <strong>"{confirmacionToggle.item.nombre}"</strong>? Deja de aparecer en el menú de Caja
+                y en el menú público — no se borra, se puede reactivar cuando quieras.
+              </>
+            ) : (
+              <>
+                ¿Activar <strong>"{confirmacionToggle.item.nombre}"</strong>? Vuelve a aparecer en el menú de Caja y
+                en el menú público.
+              </>
+            )
+          }
+          textoConfirmar={confirmacionToggle.item.activo ? "Sí, desactivar" : "Sí, activar"}
+          tono={confirmacionToggle.item.activo ? "red" : "green"}
+          cargando={guardandoToggle}
+          error={errorToggle}
+          onConfirmar={confirmarToggle}
+          onCancelar={() => setConfirmacionToggle(null)}
         />
       )}
     </div>

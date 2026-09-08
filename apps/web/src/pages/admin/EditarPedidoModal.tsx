@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Cliente, Extra, Pedido, Producto, TipoConsumo } from "shared";
 import { apiFetch, ApiError } from "../../lib/api";
 import { itemsPedidoACarrito, useCarrito } from "../../lib/useCarrito";
+import { formatBs } from "../../lib/format";
 import { IconInput } from "../../components/IconInput";
 import { ClienteModal } from "./AdminClientesPage";
 import {
@@ -149,7 +150,7 @@ export function EditarPedidoModal({
                         <IconPlus width={11} height={11} />
                       </span>
                       <p className="text-sm font-medium text-neutral-900">{producto.nombre}</p>
-                      <p className="text-xs text-neutral-500">Bs {producto.precio.toFixed(2)}</p>
+                      <p className="text-xs text-neutral-500">Bs {formatBs(producto.precio)}</p>
                     </button>
                   ))}
                 </div>
@@ -186,7 +187,7 @@ export function EditarPedidoModal({
                       <IconPlus width={14} height={14} />
                     </button>
                     <span className="ml-auto text-xs text-neutral-500">
-                      Bs {(linea.precioUnitario * linea.cantidad).toFixed(2)}
+                      Bs {formatBs(linea.precioUnitario * linea.cantidad)}
                     </span>
                   </div>
                   {extras.length > 0 && (
@@ -295,7 +296,7 @@ export function EditarPedidoModal({
         <div className="shrink-0 border-t border-neutral-200 p-4">
           <div className="mb-3 flex items-center justify-between text-lg font-bold">
             <span>Total</span>
-            <span>Bs {total.toFixed(2)}</span>
+            <span>Bs {formatBs(total)}</span>
           </div>
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <button

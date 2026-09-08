@@ -4,6 +4,22 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  /* Todo el texto de la app usa las escalas de Tailwind (text-xs, text-sm, etc.),
+     que son relativas al tamaño de fuente raíz. Subirlo un poco agranda todo el
+     texto de la aplicación de forma proporcional, sin tocar cada componente. */
+  font-size: 17px;
+}
+
+/* Los tooltips (Tooltip.tsx) se centran sobre su ícono disparador con
+   `position: absolute`, sin ningún ancestro con overflow que los contenga
+   (el StatCard, las tarjetas, etc. no recortan overflow) — en mobile, un
+   ícono cerca del borde hace que el popup de 240px se salga de la pantalla
+   y el navegador agrega scroll horizontal a toda la página. Como estos
+   popups son puramente informativos (pointer-events-none, no interactivos),
+   cortarlos en el borde es preferible a que rompan el layout entero. */
+html,
+body {
+  overflow-x: hidden;
 }
 
 /* Al imprimir un reporte desde /admin, ocultamos la navegación y dejamos
@@ -13,5 +29,49 @@ html {
   header,
   .no-imprimir {
     display: none !important;
+  }
+
+  /* Por defecto, el navegador NO imprime background-color/box-shadow (la
+     opción "Gráficos de fondo" del diálogo de impresión suele venir
+     desactivada) — sin esto, las franjas de color de cada sección, los
+     íconos con fondo de color, los badges y las barras de las gráficas
+     (que son <div> con background-color, no SVG) salen en blanco/vacíos:
+     el reporte impreso pierde toda la información que depende del color. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Que una tarjeta (gráfico, tabla) no se parta a la mitad entre dos hojas. */
+  section {
+    break-inside: avoid;
+  }
+
+  /* El ticket de Caja (TicketModal) es un overlay fixed con fondo oscuro para
+     la pantalla — al imprimir eso no debe salir: sin esto, la hoja impresa
+     sale con un fondo gris/negro detrás del ticket y, si el pedido tiene
+     muchos ítems, el contenido que no entra en una pantalla se recorta (fixed
+     limita al alto de una sola página). Se vuelve flujo normal (no fixed) sin
+     fondo, para que el ticket fluya e imprima completo. */
+  .ticket-overlay {
+    position: static !important;
+    background: none !important;
+    display: block !important;
+  }
+  .ticket-imprimible {
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* El contenedor raíz de Caja tiene fondo gris y una altura mínima de toda
+     la pantalla (min-h-dvh) para la vista normal — al ocultar su contenido
+     con .no-imprimir, ese fondo y esa altura mínima seguían ahí, así que la
+     hoja impresa salía con un cuadro gris grande (del alto de una pantalla)
+     detrás/alrededor del ticket. */
+  .caja-root {
+    background: none !important;
+    min-height: 0 !important;
   }
 }

@@ -28,18 +28,28 @@ export function useCarrito(extras: Extra[], inicial: LineaCarrito[] = []) {
   const [carrito, setCarrito] = useState<LineaCarrito[]>(inicial);
 
   function agregarProducto(producto: Producto) {
-    setCarrito((prev) => [
-      ...prev,
-      {
-        lineaId: crypto.randomUUID(),
-        productoId: producto.id,
-        nombre: producto.nombre,
-        precioUnitario: producto.precio,
-        requiereParrilla: producto.requiereParrilla,
-        cantidad: 1,
-        extraIds: [],
-      },
-    ]);
+    setCarrito((prev) => {
+      // Mismo plato, sin extras propios todavía → suma cantidad en la misma
+      // línea en vez de abrir una segunda tarjeta idéntica. Si ya tiene
+      // extras, queda aparte: "pollo con arroz" no es lo mismo que "otro
+      // pollo solo".
+      const existente = prev.find((l) => l.productoId === producto.id && l.extraIds.length === 0);
+      if (existente) {
+        return prev.map((l) => (l.lineaId === existente.lineaId ? { ...l, cantidad: l.cantidad + 1 } : l));
+      }
+      return [
+        ...prev,
+        {
+          lineaId: crypto.randomUUID(),
+          productoId: producto.id,
+          nombre: producto.nombre,
+          precioUnitario: producto.precio,
+          requiereParrilla: producto.requiereParrilla,
+          cantidad: 1,
+          extraIds: [],
+        },
+      ];
+    });
   }
 
   function cambiarCantidad(lineaId: string, delta: number) {

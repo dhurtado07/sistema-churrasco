@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ItemAuditado, Pedido, PedidoAuditoria } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconEdit, IconTrash } from "../../components/icons";
 
@@ -48,7 +49,7 @@ export function HistorialPedidoModal({ pedido, onCerrar }: { pedido: Pedido; onC
                   }`}
                 >
                   {r.accion === "CANCELADO" ? <IconTrash width={12} height={12} /> : <IconEdit width={12} height={12} />}
-                  {r.accion === "CANCELADO" ? "Cancelado" : "Editado"}
+                  {r.accion === "CANCELADO" ? "Anulado" : "Editado"}
                 </span>
                 <span className="text-xs text-neutral-400">
                   {formatoHora(r.creadoEn)} · {r.usuarioNombre}
@@ -56,12 +57,12 @@ export function HistorialPedidoModal({ pedido, onCerrar }: { pedido: Pedido; onC
               </div>
               <p className="text-xs text-neutral-500">
                 <span className="font-medium text-neutral-700">Antes:</span> {resumenItems(r.itemsAntes)} — Bs{" "}
-                {r.totalAntes.toFixed(2)}
+                {formatBs(r.totalAntes)}
               </p>
               {r.itemsDespues && (
                 <p className="mt-1 text-xs text-neutral-500">
                   <span className="font-medium text-neutral-700">Después:</span> {resumenItems(r.itemsDespues)} — Bs{" "}
-                  {r.totalDespues?.toFixed(2)}
+                  {r.totalDespues !== undefined && r.totalDespues !== null ? formatBs(r.totalDespues) : ""}
                 </p>
               )}
             </li>

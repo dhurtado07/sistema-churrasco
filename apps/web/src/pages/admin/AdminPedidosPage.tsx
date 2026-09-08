@@ -4,46 +4,26 @@ import { SOCKET_EVENTS } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
+import { useConfiguracion } from "../../lib/configuracionContext";
+import { formatBs, formatoFechaHoraBO } from "../../lib/format";
 import { IconAsistencia, IconCheck, IconEdit, IconSearch, IconTrash } from "../../components/icons";
 import { IconInput } from "../../components/IconInput";
 import { EditarPedidoModal } from "./EditarPedidoModal";
 import { HistorialPedidoModal } from "./HistorialPedidoModal";
+import {
+  ESTADO_BADGE,
+  ESTADO_LABEL,
+  puedeModificarse,
+  TABS_PEDIDOS,
+  type FiltroPedidos as Filtro,
+} from "../../lib/pedidosDisplay";
 
-type Filtro = "pendientes" | "listos" | "atendidos" | "cancelados";
-
-const TABS: { key: Filtro; label: string }[] = [
-  { key: "pendientes", label: "Pendientes" },
-  { key: "listos", label: "Listos para entregar" },
-  { key: "atendidos", label: "Entregados" },
-  { key: "cancelados", label: "Cancelados" },
-];
-
-const ESTADO_BADGE: Record<Pedido["estado"], string> = {
-  PAGADO: "bg-amber-100 text-amber-800",
-  COMPLETADO: "bg-sky-100 text-sky-800",
-  ENTREGADO: "bg-emerald-100 text-emerald-800",
-  CANCELADO: "bg-red-100 text-red-700",
-};
-
-const ESTADO_LABEL: Record<Pedido["estado"], string> = {
-  PAGADO: "Pendiente",
-  COMPLETADO: "Listo para entregar",
-  ENTREGADO: "Entregado",
-  CANCELADO: "Cancelado",
-};
-
-/** Solo se puede editar/cancelar mientras nadie en cocina o parrilla empezó a
- * prepararlo — mismo criterio que aplica el servidor. */
-function puedeModificarse(pedido: Pedido): boolean {
-  if (pedido.estado !== "PAGADO") return false;
-  if (pedido.cocinaLista) return false;
-  if (pedido.requiereParrilla && pedido.parrillaLista) return false;
-  return true;
-}
+const TABS = TABS_PEDIDOS;
 
 export function AdminPedidosPage() {
   const { token } = useAuth();
   const socket = useSocket();
+  const { configuracion } = useConfiguracion();
   const [tab, setTab] = useState<Filtro>("pendientes");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -112,14 +92,14 @@ export function AdminPedidosPage() {
   });
 
   async function cancelar(pedido: Pedido) {
-    if (!confirm(`¿Cancelar el ticket #${pedido.folio}? Esto no se puede deshacer.`)) return;
+    if (!confirm(`¿Anular el ticket #${pedido.folio}? Esto no se puede deshacer.`)) return;
     setCancelando(pedido.id);
     setError(null);
     try {
       await apiFetch(`/pedidos/${pedido.folio}/cancelar`, token, { method: "PATCH" });
       cargar();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo cancelar el pedido");
+      setError(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
     } finally {
       setCancelando(null);
     }
@@ -169,7 +149,7 @@ export function AdminPedidosPage() {
               <div>
                 <span className="font-bold text-neutral-900">Ticket #{pedido.folio}</span>
                 <span className="ml-2 text-xs text-neutral-500">
-                  {new Date(pedido.creadoEn).toLocaleString("es-BO", { dateStyle: "short", timeStyle: "short" })}
+                  {formatoFechaHoraBO(pedido.creadoEn)}
                 </span>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_BADGE[pedido.estado]}`}>
@@ -178,7 +158,11 @@ export function AdminPedidosPage() {
             </div>
 
             <p className="mb-1 text-sm text-neutral-500">
-              {pedido.tipoConsumo === "LOCAL" ? `Mesa ${pedido.mesa ?? "?"}` : "Para llevar"}
+              {pedido.tipoConsumo === "LOCAL"
+                ? configuracion.mesaHabilitada
+                  ? `Mesa ${pedido.mesa ?? "?"}`
+                  : "En el local"
+                : "Para llevar"}
               {pedido.clienteNombre ? ` · ${pedido.clienteNombre}` : ""} · Cajero: {pedido.cajeroUsername}
             </p>
 
@@ -194,12 +178,12 @@ export function AdminPedidosPage() {
             </ul>
 
             <div className="flex items-center justify-between">
-              <span className="text-lg font-bold text-neutral-900">Bs {pedido.total.toFixed(2)}</span>
+              <span className="text-lg font-bold text-neutral-900">Bs {formatBs(pedido.total)}</span>
 
               <div className="flex gap-2">
                 <button
                   onClick={() => setPedidoHistorial(pedido)}
-                  title="Ver historial de ediciones/cancelación"
+                  title="Ver historial de ediciones/anulación"
                   className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600"
                 >
                   <IconAsistencia width={14} height={14} />
@@ -222,7 +206,7 @@ export function AdminPedidosPage() {
                         className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-50"
                       >
                         <IconTrash width={14} height={14} />
-                        {cancelando === pedido.id ? "Cancelando…" : "Cancelar"}
+                        {cancelando === pedido.id ? "Anulando…" : "Anular"}
                       </button>
                     </>
                   ) : (

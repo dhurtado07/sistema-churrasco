@@ -7,6 +7,9 @@ import { apiFetch, ApiError } from "../lib/api";
 import { useSocket } from "../lib/socketContext";
 import { IconAlerta, IconCheck } from "../components/icons";
 import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
+import { ImagenProducto } from "../components/ImagenProducto";
+import { formatoFechaHoraBO } from "../lib/format";
+import { useConfiguracion } from "../lib/configuracionContext";
 
 interface Props {
   estacion: "cocina" | "parrilla";
@@ -16,6 +19,11 @@ interface Props {
 export function ColaEstacionPage({ estacion, titulo }: Props) {
   const { token } = useAuth();
   const socket = useSocket();
+  const { configuracion } = useConfiguracion();
+  // El admin puede entrar acá aunque el módulo esté apagado (para revisar) —
+  // sin este aviso, una cola vacía se confunde con "no llegan pedidos" en vez
+  // de "está apagado a propósito".
+  const moduloHabilitado = estacion === "cocina" ? configuracion.cocinaHabilitada : configuracion.parrillaHabilitada;
   const [cola, setCola] = useState<Pedido[]>([]);
   const [marcando, setMarcando] = useState<string | null>(null);
   const [pedidoAConfirmar, setPedidoAConfirmar] = useState<Pedido | null>(null);
@@ -103,6 +111,16 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
     <div className="min-h-dvh bg-neutral-100">
       <EstacionHeader titulo={titulo} />
 
+      {!moduloHabilitado && (
+        <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-amber-800 sm:mx-4">
+          <IconAlerta width={20} height={20} className="mt-0.5 shrink-0" />
+          <p className="text-sm font-medium">
+            Este módulo está desactivado por el administrador — no van a llegar pedidos nuevos acá hasta que se
+            vuelva a activar en Configuración.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
         {cola.length === 0 && (
           <p className="col-span-full text-center text-base text-neutral-400">
@@ -110,16 +128,18 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
           </p>
         )}
 
-        {cola.map((pedido, index) => (
+        {cola.map((pedido) => (
           <article key={pedido.id} className="overflow-hidden rounded-2xl border-2 border-neutral-900 bg-white shadow-xl">
+            {/* Antes mostraba la posición en la cola (1, 2, 3…) en un círculo
+                grande — pero esa posición se reusa apenas se atiende el
+                primero (el que queda pasa a ser "1" también), y se confundía
+                con el número de ticket real. Ahora el único número grande es
+                el folio del ticket, que es fijo y no se repite. */}
             <div className="flex items-center gap-3 bg-neutral-900 px-4 py-3">
-              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white text-3xl font-black text-neutral-900">
-                {index + 1}
-              </span>
               <div className="min-w-0">
-                <p className="text-lg font-bold text-white">Ticket #{pedido.folio}</p>
+                <p className="text-3xl font-black text-white">#{pedido.folio}</p>
                 <p className="text-sm text-neutral-300">
-                  {pedido.tipoConsumo === "LOCAL" ? "En local" : "Para llevar"}
+                  {pedido.tipoConsumo === "LOCAL" ? "En local" : "Para llevar"} · {formatoFechaHoraBO(pedido.creadoEn)}
                 </p>
               </div>
             </div>
@@ -134,15 +154,11 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
                   .filter((item) => (estacion === "parrilla" ? item.requiereParrilla : true))
                   .map((item) => (
                     <li key={item.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                      {item.imagenUrl ? (
-                        <img
-                          src={item.imagenUrl}
-                          alt=""
-                          className="h-16 w-16 shrink-0 rounded-xl object-cover"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 shrink-0 rounded-xl bg-neutral-100" />
-                      )}
+                      <ImagenProducto
+                        imagenUrl={item.imagenUrl}
+                        nombre={item.nombreProducto}
+                        className="h-16 w-16 shrink-0 rounded-xl"
+                      />
                       <div className="min-w-0">
                         <p className="text-xl font-bold leading-tight text-neutral-900">
                           {item.cantidad}x {item.nombreProducto}

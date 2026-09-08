@@ -161,6 +161,30 @@ export async function listarAuditoriaPedido(pedidoId: number): Promise<PedidoAud
 
 export class PedidoValidationError extends Error {}
 
+const CONFIG_POR_METODO_PAGO: Record<CrearPedidoInput["metodoPago"], keyof Configuracion> = {
+  EFECTIVO: "pagoEfectivoHabilitado",
+  TARJETA: "pagoTarjetaHabilitado",
+  TRANSFERENCIA: "pagoTransferenciaHabilitado",
+  QR: "pagoQrHabilitado",
+};
+
+/** El admin puede apagar un método de pago desde Configuración — validar acá
+ * también (no solo ocultarlo en la UI) por si llega un pedido de una sesión
+ * de Caja vieja que todavía tiene ese método visible. */
+function asegurarMetodoPagoHabilitado(config: Configuracion, metodoPago: CrearPedidoInput["metodoPago"]) {
+  if (!config[CONFIG_POR_METODO_PAGO[metodoPago]]) {
+    throw new PedidoValidationError(`El método de pago "${metodoPago}" no está habilitado. Recargá la página de Caja.`);
+  }
+}
+
+/** La mesa es obligatoria para consumo en local SOLO si el negocio la usa
+ * (algunos restaurantes no manejan número de mesa) — ver Configuración. */
+function asegurarMesaValida(config: Configuracion, input: Pick<CrearPedidoInput, "tipoConsumo" | "mesa">) {
+  if (input.tipoConsumo === "LOCAL" && config.mesaHabilitada && !input.mesa?.trim()) {
+    throw new PedidoValidationError("La mesa es obligatoria para pedidos en local.");
+  }
+}
+
 async function construirItems(items: CrearPedidoInput["items"]) {
   const productoIds = items.map((item) => item.productoId);
   const extraIds = [...new Set(items.flatMap((item) => item.extraIds))];
@@ -229,6 +253,8 @@ export async function crearPedido(
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
   const { clienteNombre, clienteCarnet } = await resolverCliente(input);
   const config = await obtenerConfiguracion();
+  asegurarMetodoPagoHabilitado(config, input.metodoPago);
+  asegurarMesaValida(config, input);
   const estadoInicial = resolverEstadoInicial(config, requiereParrilla);
 
   const pedido = await conReintento(() =>
@@ -286,6 +312,8 @@ export async function editarPedido(id: number, input: CrearPedidoInput, usuarioI
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
   const { clienteNombre, clienteCarnet } = await resolverCliente(input);
   const config = await obtenerConfiguracion();
+  asegurarMetodoPagoHabilitado(config, input.metodoPago);
+  asegurarMesaValida(config, input);
   const estadoInicial = resolverEstadoInicial(config, requiereParrilla);
 
   const pedido = await conReintento(() =>

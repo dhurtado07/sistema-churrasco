@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Extra, Producto } from "shared";
 import { apiFetch } from "../lib/api";
+import { formatBs } from "../lib/format";
 import { IconHome, IconNegocio, IconUser } from "../components/icons";
+import { ImagenProducto } from "../components/ImagenProducto";
 
 interface NegocioPublico {
   nombreNegocio: string;
@@ -66,12 +68,15 @@ export function MenuPublicoPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {items.map((producto) => (
                 <div key={producto.id} className="flex overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-                  {producto.imagenUrl && (
-                    <img src={producto.imagenUrl} alt={producto.nombre} className="h-24 w-24 shrink-0 object-cover" />
-                  )}
+                  <ImagenProducto
+                    imagenUrl={producto.imagenUrl}
+                    nombre={producto.nombre}
+                    categoria={producto.categoria}
+                    className="h-24 w-24 shrink-0"
+                  />
                   <div className="p-3">
                     <p className="font-medium text-neutral-900">{producto.nombre}</p>
-                    <p className="text-sm font-semibold text-neutral-700">Bs {producto.precio.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-neutral-700">Bs {formatBs(producto.precio)}</p>
                   </div>
                 </div>
               ))}
@@ -87,7 +92,7 @@ export function MenuPublicoPage() {
             <ul className="flex flex-wrap gap-2">
               {extras.map((extra) => (
                 <li key={extra.id} className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-sm shadow-sm">
-                  {extra.nombre} · Bs {extra.precio.toFixed(2)}
+                  {extra.nombre} · Bs {formatBs(extra.precio)}
                 </li>
               ))}
             </ul>

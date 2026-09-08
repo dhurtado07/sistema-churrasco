@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Compra, Insumo, Proveedor } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconCompra, IconPlus, IconTrash } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { TablaSeccion, Th, FilaVacia, FiltroBusqueda } from "../../components/TablaSeccion";
+import { TablaSeccion, FiltroBusqueda } from "../../components/TablaSeccion";
 
 // insumoId vacío = compra "suelta" sin control de stock (texto libre, igual
 // que antes de tener el catálogo de insumos).
@@ -90,7 +91,7 @@ export function AdminComprasPage() {
           icono={IconCompra}
           acento="naranja"
           label="Invertido en este filtro"
-          value={`Bs ${totalInvertido.toFixed(2)}`}
+          value={`Bs ${formatBs(totalInvertido)}`}
           hint="Suma de todas las compras que coinciden con los filtros de abajo."
         />
         <StatCard
@@ -149,39 +150,25 @@ export function AdminComprasPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Fecha en la que se registró la compra.">Fecha</Th>
-                <Th hint="A quién se le compró — puede estar vacío si fue una compra genérica sin proveedor.">Proveedor</Th>
-                <Th hint="Qué insumos incluye esta compra, con cantidad y unidad.">Insumos</Th>
-                <Th hint="Quién cargó la compra en el sistema.">Registrado por</Th>
-                <Th align="right" hint="Monto total de la compra (suma de cantidad × precio unitario de cada insumo).">
-                  Total
-                </Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {comprasFiltradas.map((c) => (
-                <tr key={c.id} className="hover:bg-neutral-50">
-                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-neutral-500">{formatoFecha(c.fecha)}</td>
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">{c.proveedorNombre ?? "Sin proveedor"}</td>
-                  <td className="max-w-xs px-3 py-2.5 text-xs text-neutral-600">
-                    {c.items.map((i) => `${i.cantidad} ${i.unidad} ${i.insumo}`).join(", ")}
-                  </td>
-                  <td className="px-3 py-2.5 text-neutral-600">{c.registradoPorNombre}</td>
-                  <td className="px-3 py-2.5 text-right font-semibold text-red-600">Bs {c.total.toFixed(2)}</td>
-                </tr>
-              ))}
-              {comprasFiltradas.length === 0 && (
-                <FilaVacia colSpan={5}>
-                  {compras.length === 0 ? "No hay compras registradas todavía." : "Ninguna compra coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {comprasFiltradas.map((c) => (
+            <li key={c.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">{c.proveedorNombre ?? "Sin proveedor"}</p>
+                <p className="text-xs text-neutral-500">{formatoFecha(c.fecha)} · {c.registradoPorNombre}</p>
+                <p className="mt-1 text-xs text-neutral-600">
+                  {c.items.map((i) => `${i.cantidad} ${i.unidad} ${i.insumo}`).join(", ")}
+                </p>
+              </div>
+              <span className="shrink-0 font-semibold text-red-600">Bs {formatBs(c.total)}</span>
+            </li>
+          ))}
+          {comprasFiltradas.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {compras.length === 0 ? "No hay compras registradas todavía." : "Ninguna compra coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (
@@ -369,7 +356,7 @@ function CompraModal({
 
         <div className="flex items-center justify-between border-t border-neutral-200 pt-2 text-base font-bold">
           <span>Total</span>
-          <span>Bs {total.toFixed(2)}</span>
+          <span>Bs {formatBs(total)}</span>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

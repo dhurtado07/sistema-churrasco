@@ -24,6 +24,7 @@ import { AdminInsumosPage } from "./pages/admin/AdminInsumosPage";
 import { AsistenciaKioskoPage } from "./pages/AsistenciaKioskoPage";
 import { AdminReportesPage } from "./pages/admin/AdminReportesPage";
 import { MenuPublicoPage } from "./pages/MenuPublicoPage";
+import { LandingPage } from "./pages/LandingPage";
 
 export function App() {
   return (
@@ -31,6 +32,7 @@ export function App() {
       <SocketProvider>
         <ConfiguracionProvider>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/menu" element={<MenuPublicoPage />} />
             <Route

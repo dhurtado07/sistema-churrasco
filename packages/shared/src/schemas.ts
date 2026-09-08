@@ -80,34 +80,36 @@ export const itemPedidoInputSchema = z.object({
   extraIds: z.array(z.string()).default([]),
 });
 
-export const crearPedidoSchema = z
-  .object({
-    clienteId: z.string().min(1).optional(),
-    clienteNombre: z.string().min(1).optional(),
-    clienteCarnet: z.string().min(1).optional(),
-    tipoConsumo: tipoConsumoSchema,
-    mesa: z.string().min(1).optional(),
-    metodoPago: metodoPagoSchema.default("EFECTIVO"),
-    items: z.array(itemPedidoInputSchema).min(1),
-  })
-  // La mesa es obligatoria para consumo en local (ver ARCHITECTURE.md sección
-  // 2) — Entrega necesita saber a dónde llevar el pedido. El frontend ya
-  // deshabilita el botón de cobrar sin mesa, pero la API no debe confiar
-  // solo en eso: cualquier otro cliente (o un bug de UI) podría saltearlo.
-  .refine((data) => data.tipoConsumo !== "LOCAL" || !!data.mesa?.trim(), {
-    message: "La mesa es obligatoria para pedidos en local.",
-    path: ["mesa"],
-  });
+// La mesa es obligatoria para consumo en local SOLO si el negocio la usa
+// (Configuración > mesaHabilitada — algunos restaurantes no manejan mesas).
+// Como esa validación depende de la config guardada en la base, no se puede
+// resolver acá con un simple .refine() estático — se hace en
+// pedidos/service.ts#asegurarMesaValida, con la config ya cargada.
+export const crearPedidoSchema = z.object({
+  clienteId: z.string().min(1).optional(),
+  clienteNombre: z.string().min(1).optional(),
+  clienteCarnet: z.string().min(1).optional(),
+  tipoConsumo: tipoConsumoSchema,
+  mesa: z.string().min(1).optional(),
+  metodoPago: metodoPagoSchema.default("EFECTIVO"),
+  items: z.array(itemPedidoInputSchema).min(1),
+});
 
 export const actualizarConfiguracionSchema = z.object({
   cocinaHabilitada: z.boolean().optional(),
   parrillaHabilitada: z.boolean().optional(),
   entregaHabilitada: z.boolean().optional(),
+  mesaHabilitada: z.boolean().optional(),
   nombreNegocio: z.string().min(1).optional(),
   direccion: z.string().min(1).nullable().optional(),
   telefono: z.string().min(1).nullable().optional(),
   nit: z.string().min(1).nullable().optional(),
   logoUrl: imagenUrlSchema.nullable().optional(),
+  pagoEfectivoHabilitado: z.boolean().optional(),
+  pagoTarjetaHabilitado: z.boolean().optional(),
+  pagoTransferenciaHabilitado: z.boolean().optional(),
+  pagoQrHabilitado: z.boolean().optional(),
+  qrPagoUrl: imagenUrlSchema.nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------

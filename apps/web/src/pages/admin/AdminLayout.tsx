@@ -1,6 +1,8 @@
 import { useState, type SVGProps } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import type { Configuracion } from "shared";
 import { useAuth } from "../../lib/auth";
+import { useConfiguracion } from "../../lib/configuracionContext";
 import { CambiarPasswordModal } from "../../components/CambiarPasswordModal";
 import {
   IconAlerta,
@@ -30,22 +32,41 @@ interface NavItem {
   label: string;
   end: boolean;
   Icon: (props: SVGProps<SVGSVGElement>) => JSX.Element;
+  // Si el módulo tiene un switch en Configuración (Cocina/Parrilla/Entrega),
+  // se linkea acá para poder avisar en el propio menú cuando está apagado —
+  // así nadie confunde "no llegan pedidos a esta pantalla" con un error.
+  configKey?: keyof Configuracion;
 }
 
 const GRUPOS: { titulo: string; items: NavItem[] }[] = [
+  {
+    // Todo el flujo en vivo de un pedido, de punta a punta: se hace en Pedidos/Caja,
+    // pasa por Cocina y Parrilla, y termina en Entrega — antes estaba repartido entre
+    // "Negocio" y "Estaciones en vivo", lo que no dejaba ver que es un solo flujo.
+    titulo: "Pedidos y estaciones",
+    items: [
+      { to: "/admin/pedidos", label: "Pedidos", end: false, Icon: IconPedidos },
+      { to: "/admin/caja", label: "Caja", end: false, Icon: IconCaja },
+      { to: "/admin/cocina", label: "Cocina", end: false, Icon: IconCocina, configKey: "cocinaHabilitada" },
+      { to: "/admin/parrilla", label: "Parrilla", end: false, Icon: IconParrilla, configKey: "parrillaHabilitada" },
+      { to: "/admin/entrega", label: "Entrega", end: false, Icon: IconEntrega, configKey: "entregaHabilitada" },
+    ],
+  },
   {
     titulo: "Negocio",
     items: [
       { to: "/admin", label: "Ganancias", end: true, Icon: IconGanancias },
       { to: "/admin/reportes", label: "Reportes", end: false, Icon: IconDescarga },
-      { to: "/admin/pedidos", label: "Pedidos", end: false, Icon: IconPedidos },
       { to: "/admin/caja-diaria", label: "Caja y dinero", end: false, Icon: IconCoin },
+    ],
+  },
+  {
+    titulo: "Compras e inventario",
+    items: [
       { to: "/admin/compras", label: "Compras", end: false, Icon: IconCompra },
       { to: "/admin/proveedores", label: "Proveedores", end: false, Icon: IconProveedor },
       { to: "/admin/inventario", label: "Inventario", end: false, Icon: IconInventario },
       { to: "/admin/insumos", label: "Insumos y stock", end: false, Icon: IconAlerta },
-      { to: "/admin/empleados", label: "Empleados", end: false, Icon: IconEmpleado },
-      { to: "/admin/usuarios", label: "Usuarios de estación", end: false, Icon: IconUser },
     ],
   },
   {
@@ -57,12 +78,10 @@ const GRUPOS: { titulo: string; items: NavItem[] }[] = [
     ],
   },
   {
-    titulo: "Estaciones en vivo",
+    titulo: "Personal",
     items: [
-      { to: "/admin/caja", label: "Caja", end: false, Icon: IconCaja },
-      { to: "/admin/cocina", label: "Cocina", end: false, Icon: IconCocina },
-      { to: "/admin/parrilla", label: "Parrilla", end: false, Icon: IconParrilla },
-      { to: "/admin/entrega", label: "Entrega", end: false, Icon: IconEntrega },
+      { to: "/admin/empleados", label: "Empleados", end: false, Icon: IconEmpleado },
+      { to: "/admin/usuarios", label: "Usuarios de estación", end: false, Icon: IconUser },
     ],
   },
 ];
@@ -74,8 +93,19 @@ const NAV = GRUPOS.flatMap((grupo) => grupo.items);
 // no duplicamos la barra superior de administración encima de la suya.
 const RUTAS_CON_CABECERA_PROPIA = ["/admin/caja", "/admin/cocina", "/admin/parrilla", "/admin/entrega"];
 
+/** Pill "Desactivada" para un módulo apagado en Configuración — para que
+ * quien mira el menú no confunda "no llega nada acá" con un error. */
+function BadgeDesactivada() {
+  return (
+    <span className="ml-auto shrink-0 rounded-full bg-neutral-700 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+      Desactivada
+    </span>
+  );
+}
+
 export function AdminLayout() {
   const { usuario, logout } = useAuth();
+  const { configuracion } = useConfiguracion();
   const location = useLocation();
   const ocultarTopbarMobile = RUTAS_CON_CABECERA_PROPIA.includes(location.pathname);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -98,7 +128,7 @@ export function AdminLayout() {
                 {grupo.titulo}
               </p>
               <div className="space-y-1">
-                {grupo.items.map(({ to, label, end, Icon }) => (
+                {grupo.items.map(({ to, label, end, Icon, configKey }) => (
                   <NavLink
                     key={to}
                     to={to}
@@ -111,6 +141,7 @@ export function AdminLayout() {
                   >
                     <Icon />
                     {label}
+                    {configKey && !configuracion[configKey] && <BadgeDesactivada />}
                   </NavLink>
                 ))}
               </div>
@@ -191,7 +222,7 @@ export function AdminLayout() {
                     {grupo.titulo}
                   </p>
                   <div className="space-y-1">
-                    {grupo.items.map(({ to, label, end, Icon }) => (
+                    {grupo.items.map(({ to, label, end, Icon, configKey }) => (
                       <NavLink
                         key={to}
                         to={to}
@@ -205,6 +236,7 @@ export function AdminLayout() {
                       >
                         <Icon />
                         {label}
+                        {configKey && !configuracion[configKey] && <BadgeDesactivada />}
                       </NavLink>
                     ))}
                   </div>

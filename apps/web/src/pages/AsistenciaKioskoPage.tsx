@@ -51,7 +51,7 @@ export function AsistenciaKioskoPage() {
 
   return (
     <div className="min-h-dvh bg-neutral-100">
-      <EstacionHeader titulo="Asistencia" />
+      <EstacionHeader titulo="Asistencia" mostrarVerPedidos={false} />
 
       <div className="flex flex-col items-center justify-center gap-6 p-6 pt-16 text-center">
         <IconAsistencia width={56} height={56} className="text-neutral-400" />

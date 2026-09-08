@@ -6,7 +6,7 @@ import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconClientes, IconIdCard, IconPlus, IconUser } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { FiltroBusqueda, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { FiltroBusqueda, TablaSeccion } from "../../components/TablaSeccion";
 
 function formatoFecha(iso: string) {
   return new Date(iso).toLocaleDateString("es-BO", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -65,29 +65,20 @@ export function AdminClientesPage() {
         descripcion="Se usa desde Caja para autocompletar nombre/carnet sin re-tipearlo cada vez."
         filtros={<FiltroBusqueda value={busqueda} onChange={setBusqueda} placeholder="Buscar por nombre o carnet…" />}
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre completo del cliente.">Cliente</Th>
-                <Th hint="Carnet de identidad, si se registró (es opcional).">Carnet</Th>
-                <Th align="right" hint="Cuándo se registró este cliente en el directorio.">Registrado</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {clientes.map((cliente) => (
-                <tr key={cliente.id} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">{cliente.nombre}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{cliente.carnet ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right text-neutral-500">{formatoFecha(cliente.creadoEn)}</td>
-                </tr>
-              ))}
-              {clientes.length === 0 && (
-                <FilaVacia colSpan={3}>No hay clientes registrados todavía.</FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {clientes.map((cliente) => (
+            <li key={cliente.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">{cliente.nombre}</p>
+                <p className="text-xs text-neutral-500">Carnet: {cliente.carnet ?? "—"}</p>
+              </div>
+              <p className="shrink-0 text-xs text-neutral-400">Registrado {formatoFecha(cliente.creadoEn)}</p>
+            </li>
+          ))}
+          {clientes.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">No hay clientes registrados todavía.</p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (

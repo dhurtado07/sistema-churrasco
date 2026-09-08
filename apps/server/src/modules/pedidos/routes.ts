@@ -78,12 +78,20 @@ export async function pedidosRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get("/pedidos", { preHandler: [fastify.requireRole("cajero", "admin")] }, async (request, reply) => {
-    const { estado } = request.query as { estado?: string };
-    const filtros: FiltroPedidos[] = ["pendientes", "listos", "atendidos", "cancelados", "todos"];
-    const filtro = (filtros as string[]).includes(estado ?? "") ? (estado as FiltroPedidos) : "pendientes";
-    return listarPedidos(filtro);
-  });
+  // Lectura del historial de pedidos: además de caja/admin, cocina, parrilla
+  // y entrega también pueden consultarlo (de solo lectura, ver "Ver pedidos"
+  // en cada estación) — sobre todo para revisar qué se entregó. Ninguna de
+  // esas rutas de escritura (editar/cancelar más abajo) las incluye.
+  fastify.get(
+    "/pedidos",
+    { preHandler: [fastify.requireRole("cajero", "cocina", "parrilla", "entrega", "admin")] },
+    async (request) => {
+      const { estado } = request.query as { estado?: string };
+      const filtros: FiltroPedidos[] = ["pendientes", "listos", "atendidos", "cancelados", "todos"];
+      const filtro = (filtros as string[]).includes(estado ?? "") ? (estado as FiltroPedidos) : "pendientes";
+      return listarPedidos(filtro);
+    },
+  );
 
   fastify.patch("/pedidos/:id", { preHandler: [fastify.requireRole("cajero", "admin")] }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);

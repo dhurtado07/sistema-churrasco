@@ -1,6 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { generarExcelFinanciero, reporteFinanciero, reporteGanancias } from "./service.js";
 
+// "YYYY-MM-DD" (sin hora) lo interpreta el motor de JS como medianoche UTC, no
+// medianoche local — mezclarlo con Date#setHours (que opera en hora local, como
+// hacen inicioDelDia/finDelDia en el servicio) desplaza el rango un día entero
+// en cualquier servidor cuya zona horaria no sea UTC+0. Por eso un "hoy" con
+// fecha explícita podía no encontrar ni un pedido. Se arma la fecha a mano en
+// hora local para evitar la ambigüedad.
+function parseFechaLocal(str: string): Date {
+  const [anio, mes, dia] = str.split("-").map(Number);
+  return new Date(anio, (mes ?? 1) - 1, dia ?? 1);
+}
+
 function rangoValido(desdeStr?: string, hastaStr?: string): { desde: Date; hasta: Date } | null {
   if (!desdeStr || !hastaStr) return null;
   const desde = new Date(desdeStr);
@@ -11,12 +22,16 @@ function rangoValido(desdeStr?: string, hastaStr?: string): { desde: Date; hasta
 
 export async function reportesRoutes(fastify: FastifyInstance) {
   fastify.get("/reportes/ganancias", { preHandler: [fastify.requireRole("admin")] }, async (request, reply) => {
-    const { fecha } = request.query as { fecha?: string };
-    const fechaConsulta = fecha ? new Date(fecha) : new Date();
-    if (Number.isNaN(fechaConsulta.getTime())) {
+    // Acepta ?fecha=YYYY-MM-DD (un solo día, default hoy) o ?desde=...&hasta=... (rango).
+    const { fecha, desde, hasta } = request.query as { fecha?: string; desde?: string; hasta?: string };
+    const desdeStr = desde ?? fecha;
+    const hastaStr = hasta ?? desde ?? fecha;
+    const desdeConsulta = desdeStr ? parseFechaLocal(desdeStr) : new Date();
+    const hastaConsulta = hastaStr ? parseFechaLocal(hastaStr) : desdeConsulta;
+    if (Number.isNaN(desdeConsulta.getTime()) || Number.isNaN(hastaConsulta.getTime())) {
       return reply.code(400).send({ error: "fecha inválida, usar YYYY-MM-DD" });
     }
-    return reporteGanancias(fechaConsulta);
+    return reporteGanancias(desdeConsulta, hastaConsulta);
   });
 
   fastify.get("/reportes/financiero", { preHandler: [fastify.requireRole("admin")] }, async (request, reply) => {

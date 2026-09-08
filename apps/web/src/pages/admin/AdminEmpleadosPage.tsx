@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Empleado } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconCoin, IconEdit, IconEmpleado, IconLock, IconPlus, IconTag, IconUser } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
+import { ConfirmActionModal } from "../../components/ConfirmActionModal";
 
 export function AdminEmpleadosPage() {
   const { token } = useAuth();
@@ -15,6 +17,9 @@ export function AdminEmpleadosPage() {
   const [editando, setEditando] = useState<Empleado | null>(null);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "ACTIVOS" | "INACTIVOS">("ACTIVOS");
+  const [empleadoAConfirmar, setEmpleadoAConfirmar] = useState<Empleado | null>(null);
+  const [guardandoToggle, setGuardandoToggle] = useState(false);
+  const [errorToggle, setErrorToggle] = useState<string | null>(null);
 
   async function cargar() {
     setEmpleados(await apiFetch<Empleado[]>("/empleados", token));
@@ -25,12 +30,22 @@ export function AdminEmpleadosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function alternarActivo(empleado: Empleado) {
-    await apiFetch(`/empleados/${empleado.id}`, token, {
-      method: "PATCH",
-      body: JSON.stringify({ activo: !empleado.activo }),
-    });
-    cargar();
+  async function confirmarToggle() {
+    if (!empleadoAConfirmar) return;
+    setGuardandoToggle(true);
+    setErrorToggle(null);
+    try {
+      await apiFetch(`/empleados/${empleadoAConfirmar.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ activo: !empleadoAConfirmar.activo }),
+      });
+      setEmpleadoAConfirmar(null);
+      cargar();
+    } catch (err) {
+      setErrorToggle(err instanceof ApiError ? err.message : "No se pudo cambiar el estado");
+    } finally {
+      setGuardandoToggle(false);
+    }
   }
 
   const filtrados = useMemo(() => {
@@ -74,7 +89,7 @@ export function AdminEmpleadosPage() {
           icono={IconCoin}
           acento="esmeralda"
           label="Nómina mensual (activos)"
-          value={`Bs ${nominaMensual.toFixed(2)}`}
+          value={`Bs ${formatBs(nominaMensual)}`}
           hint="Suma de sueldos mensuales de los empleados activos que coinciden con el filtro — no depende de las horas marcadas."
         />
       </div>
@@ -99,59 +114,41 @@ export function AdminEmpleadosPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre completo del empleado.">Empleado</Th>
-                <Th hint="Rol dentro del negocio (ej. Mesero, Parrillero).">Puesto</Th>
-                <Th hint="Usuario con el que marca su entrada/salida en /asistencia (independiente de las cuentas de estación).">
-                  Usuario
-                </Th>
-                <Th align="right" hint="Sueldo mensual acordado.">Sueldo/mes</Th>
-                <Th align="center" hint="Si tiene PIN configurado, se le pide además de la sesión al marcar asistencia — evita que alguien marque por otro compartiendo el kiosko.">
-                  PIN
-                </Th>
-                <Th align="center" hint="Un empleado inactivo no puede marcar asistencia, pero su historial se conserva.">Estado</Th>
-                <Th align="right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filtrados.map((e) => (
-                <tr key={e.id} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">{e.nombre}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{e.puesto}</td>
-                  <td className="px-3 py-2.5 text-neutral-500">{e.username}</td>
-                  <td className="px-3 py-2.5 text-right text-neutral-700">Bs {e.sueldo.toFixed(2)}</td>
-                  <td className="px-3 py-2.5 text-center">
-                    <Badge tono={e.tienePin ? "verde" : "gris"}>{e.tienePin ? "Sí" : "No"}</Badge>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <button onClick={() => alternarActivo(e)}>
-                      <Badge tono={e.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
-                        {e.activo ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <button
-                      onClick={() => setEditando(e)}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-900"
-                    >
-                      <IconEdit width={13} height={13} />
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <FilaVacia colSpan={7}>
-                  {empleados.length === 0 ? "No hay empleados registrados todavía." : "Ningún empleado coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {filtrados.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">{e.nombre}</p>
+                <p className="text-xs text-neutral-500">
+                  {e.puesto} · usuario {e.username}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium text-neutral-700">Bs {formatBs(e.sueldo)}/mes</span>
+                  <Badge tono={e.tienePin ? "verde" : "gris"} hint="Si tiene PIN, se le pide además de la sesión al marcar asistencia.">
+                    PIN {e.tienePin ? "Sí" : "No"}
+                  </Badge>
+                  <button onClick={() => setEmpleadoAConfirmar(e)}>
+                    <Badge tono={e.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
+                      {e.activo ? "Activo" : "Inactivo"}
+                    </Badge>
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditando(e)}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+              >
+                <IconEdit width={13} height={13} />
+                Editar
+              </button>
+            </li>
+          ))}
+          {filtrados.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {empleados.length === 0 ? "No hay empleados registrados todavía." : "Ningún empleado coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (
@@ -166,6 +163,30 @@ export function AdminEmpleadosPage() {
             setEditando(null);
             cargar();
           }}
+        />
+      )}
+      {empleadoAConfirmar && (
+        <ConfirmActionModal
+          titulo={empleadoAConfirmar.activo ? "Desactivar empleado" : "Activar empleado"}
+          mensaje={
+            empleadoAConfirmar.activo ? (
+              <>
+                ¿Desactivar a <strong>"{empleadoAConfirmar.nombre}"</strong>? No va a poder marcar asistencia ni
+                iniciar sesión hasta que lo reactives.
+              </>
+            ) : (
+              <>
+                ¿Activar a <strong>"{empleadoAConfirmar.nombre}"</strong>? Vuelve a poder marcar asistencia e iniciar
+                sesión.
+              </>
+            )
+          }
+          textoConfirmar={empleadoAConfirmar.activo ? "Sí, desactivar" : "Sí, activar"}
+          tono={empleadoAConfirmar.activo ? "red" : "green"}
+          cargando={guardandoToggle}
+          error={errorToggle}
+          onConfirmar={confirmarToggle}
+          onCancelar={() => setEmpleadoAConfirmar(null)}
         />
       )}
     </div>

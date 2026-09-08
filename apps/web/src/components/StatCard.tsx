@@ -34,7 +34,9 @@ export function StatCard({
             </Tooltip>
           )}
         </p>
-        <p className={`truncate text-lg font-bold ${paleta.texto}`}>{value}</p>
+        {/* Nunca truncar un número de KPI: si no entra en el ancho de la tarjeta,
+            mejor que baje de línea a que se corte con "…" y se pierda el dato. */}
+        <p className={`break-words text-lg font-bold leading-tight ${paleta.texto}`}>{value}</p>
       </div>
     </div>
   );

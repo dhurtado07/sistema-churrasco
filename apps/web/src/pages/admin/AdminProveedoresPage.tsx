@@ -5,7 +5,8 @@ import { apiFetch, ApiError } from "../../lib/api";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconPlus, IconProveedor, IconTag, IconUser } from "../../components/icons";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
+import { ConfirmActionModal } from "../../components/ConfirmActionModal";
 
 export function AdminProveedoresPage() {
   const { token } = useAuth();
@@ -13,6 +14,9 @@ export function AdminProveedoresPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "ACTIVOS" | "INACTIVOS">("ACTIVOS");
+  const [proveedorAConfirmar, setProveedorAConfirmar] = useState<Proveedor | null>(null);
+  const [guardandoToggle, setGuardandoToggle] = useState(false);
+  const [errorToggle, setErrorToggle] = useState<string | null>(null);
 
   async function cargar() {
     setProveedores(await apiFetch<Proveedor[]>("/proveedores", token));
@@ -23,12 +27,22 @@ export function AdminProveedoresPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function alternarActivo(proveedor: Proveedor) {
-    await apiFetch(`/proveedores/${proveedor.id}`, token, {
-      method: "PATCH",
-      body: JSON.stringify({ activo: !proveedor.activo }),
-    });
-    cargar();
+  async function confirmarToggle() {
+    if (!proveedorAConfirmar) return;
+    setGuardandoToggle(true);
+    setErrorToggle(null);
+    try {
+      await apiFetch(`/proveedores/${proveedorAConfirmar.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ activo: !proveedorAConfirmar.activo }),
+      });
+      setProveedorAConfirmar(null);
+      cargar();
+    } catch (err) {
+      setErrorToggle(err instanceof ApiError ? err.message : "No se pudo cambiar el estado");
+    } finally {
+      setGuardandoToggle(false);
+    }
   }
 
   const filtrados = useMemo(() => {
@@ -78,48 +92,63 @@ export function AdminProveedoresPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre del proveedor.">Proveedor</Th>
-                <Th hint="Rubro del proveedor (ej. carnes, verduras, bebidas).">Categoría</Th>
-                <Th hint="Persona de contacto y teléfono, si se registraron.">Contacto</Th>
-                <Th align="center" hint="Un proveedor inactivo no aparece como opción al registrar una compra nueva, pero su historial se conserva.">
-                  Estado
-                </Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filtrados.map((p) => (
-                <tr key={p.id} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">{p.nombre}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{p.categoria ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">
-                    {p.contacto ?? "—"}
-                    {p.telefono ? ` · ${p.telefono}` : ""}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <button onClick={() => alternarActivo(p)}>
-                      <Badge tono={p.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
-                        {p.activo ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <FilaVacia colSpan={4}>
-                  {proveedores.length === 0 ? "No hay proveedores todavía." : "Ningún proveedor coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {filtrados.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">{p.nombre}</p>
+                <p className="text-xs text-neutral-500">
+                  {p.categoria ?? "Sin categoría"}
+                  {(p.contacto || p.telefono) && (
+                    <>
+                      {" · "}
+                      {p.contacto ?? "—"}
+                      {p.telefono ? ` · ${p.telefono}` : ""}
+                    </>
+                  )}
+                </p>
+              </div>
+              <button onClick={() => setProveedorAConfirmar(p)} className="shrink-0">
+                <Badge tono={p.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
+                  {p.activo ? "Activo" : "Inactivo"}
+                </Badge>
+              </button>
+            </li>
+          ))}
+          {filtrados.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {proveedores.length === 0 ? "No hay proveedores todavía." : "Ningún proveedor coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (
         <ProveedorModal token={token} onCerrar={() => setModalAbierto(false)} onCreado={() => { setModalAbierto(false); cargar(); }} />
+      )}
+      {proveedorAConfirmar && (
+        <ConfirmActionModal
+          titulo={proveedorAConfirmar.activo ? "Desactivar proveedor" : "Activar proveedor"}
+          mensaje={
+            proveedorAConfirmar.activo ? (
+              <>
+                ¿Desactivar a <strong>"{proveedorAConfirmar.nombre}"</strong>? Deja de aparecer como opción al
+                registrar una compra nueva — no se borra, se puede reactivar cuando quieras.
+              </>
+            ) : (
+              <>
+                ¿Activar a <strong>"{proveedorAConfirmar.nombre}"</strong>? Vuelve a estar disponible al registrar
+                una compra.
+              </>
+            )
+          }
+          textoConfirmar={proveedorAConfirmar.activo ? "Sí, desactivar" : "Sí, activar"}
+          tono={proveedorAConfirmar.activo ? "red" : "green"}
+          cargando={guardandoToggle}
+          error={errorToggle}
+          onConfirmar={confirmarToggle}
+          onCancelar={() => setProveedorAConfirmar(null)}
+        />
       )}
     </div>
   );

@@ -2,8 +2,17 @@ import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { IconLock, IconLogout } from "./icons";
 import { CambiarPasswordModal } from "./CambiarPasswordModal";
+import { VerPedidosModal } from "./VerPedidosModal";
 
-export function EstacionHeader({ titulo }: { titulo: string }) {
+export function EstacionHeader({
+  titulo,
+  mostrarVerPedidos = true,
+}: {
+  titulo: string;
+  /** El kiosko de asistencia (rol "empleado") no vende ni prepara pedidos —
+   * ese rol no tiene permiso para listarlos, así que ahí se oculta. */
+  mostrarVerPedidos?: boolean;
+}) {
   const { usuario, logout } = useAuth();
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
 
@@ -14,6 +23,7 @@ export function EstacionHeader({ titulo }: { titulo: string }) {
         {usuario && <p className="text-xs text-neutral-400">{usuario.nombre}</p>}
       </div>
       <div className="flex items-center gap-2">
+        {mostrarVerPedidos && <VerPedidosModal />}
         <button
           onClick={() => setCambiandoPassword(true)}
           title="Cambiar mi contraseña"

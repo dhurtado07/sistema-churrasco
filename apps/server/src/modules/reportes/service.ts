@@ -8,22 +8,27 @@ import type {
 import ExcelJS from "exceljs";
 import { prisma } from "../../db.js";
 
-function inicioFinDelDia(fecha: Date): { desde: Date; hasta: Date } {
-  const desde = new Date(fecha);
-  desde.setHours(0, 0, 0, 0);
-  const hasta = new Date(desde);
-  hasta.setDate(hasta.getDate() + 1);
-  return { desde, hasta };
+function inicioDelDia(fecha: Date): Date {
+  const d = new Date(fecha);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-export async function reporteGanancias(fecha: Date): Promise<ReporteGanancias> {
-  const { desde, hasta } = inicioFinDelDia(fecha);
+function finDelDia(fecha: Date): Date {
+  const d = new Date(fecha);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desdeInput): Promise<ReporteGanancias> {
+  const desde = inicioDelDia(desdeInput);
+  const hasta = finDelDia(hastaInput);
 
   const pedidos = await prisma.pedido.findMany({
     // La venta ya está cerrada apenas cocina y parrilla terminan (COMPLETADO);
     // que después pase a ENTREGADO es solo el paso logístico de entrega y no
-    // debe hacer que el pedido "desaparezca" de las ganancias del día.
-    where: { estado: { in: ["COMPLETADO", "ENTREGADO"] }, completadoEn: { gte: desde, lt: hasta } },
+    // debe hacer que el pedido "desaparezca" de las ganancias del período.
+    where: { estado: { in: ["COMPLETADO", "ENTREGADO"] }, completadoEn: { gte: desde, lte: hasta } },
     include: { items: { include: { extras: true } } },
   });
 
@@ -51,7 +56,8 @@ export async function reporteGanancias(fecha: Date): Promise<ReporteGanancias> {
   }
 
   return {
-    fecha: desde.toISOString().slice(0, 10),
+    desde: desde.toISOString().slice(0, 10),
+    hasta: hasta.toISOString().slice(0, 10),
     totalVendido,
     cantidadPedidos: pedidos.length,
     porTipoConsumo,

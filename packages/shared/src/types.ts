@@ -134,15 +134,22 @@ export interface Configuracion {
   cocinaHabilitada: boolean;
   parrillaHabilitada: boolean;
   entregaHabilitada: boolean;
+  mesaHabilitada: boolean;
   nombreNegocio: string;
   direccion: string | null;
   telefono: string | null;
   nit: string | null;
   logoUrl: string | null;
+  pagoEfectivoHabilitado: boolean;
+  pagoTarjetaHabilitado: boolean;
+  pagoTransferenciaHabilitado: boolean;
+  pagoQrHabilitado: boolean;
+  qrPagoUrl: string | null;
 }
 
 export interface ReporteGanancias {
-  fecha: string;
+  desde: string;
+  hasta: string;
   totalVendido: number;
   cantidadPedidos: number;
   porTipoConsumo: Record<TipoConsumo, number>;

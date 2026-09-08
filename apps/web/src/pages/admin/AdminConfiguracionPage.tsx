@@ -1,14 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import type { Configuracion } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useConfiguracion } from "../../lib/configuracionContext";
+import { resizeImageToDataUrl } from "../../lib/image";
 import { IconInput } from "../../components/IconInput";
 import {
   IconCaja,
+  IconCamera,
   IconCheck,
   IconCocina,
+  IconCoin,
   IconEntrega,
+  IconMesa,
   IconParrilla,
   IconNegocio,
   IconHome,
@@ -17,6 +21,23 @@ import {
 } from "../../components/icons";
 
 type ClaveModulo = "cocinaHabilitada" | "parrillaHabilitada" | "entregaHabilitada";
+// Cualquier campo booleano de Configuracion que se prenda/apague con el
+// mismo switch reutilizable (módulos de estación, mesa, métodos de pago).
+type ClaveToggle = ClaveModulo | "mesaHabilitada" | keyof MetodosPagoHabilitados;
+
+interface MetodosPagoHabilitados {
+  pagoEfectivoHabilitado: boolean;
+  pagoTarjetaHabilitado: boolean;
+  pagoTransferenciaHabilitado: boolean;
+  pagoQrHabilitado: boolean;
+}
+
+const METODOS_PAGO: { key: keyof MetodosPagoHabilitados; nombre: string }[] = [
+  { key: "pagoEfectivoHabilitado", nombre: "Efectivo" },
+  { key: "pagoTarjetaHabilitado", nombre: "Tarjeta" },
+  { key: "pagoTransferenciaHabilitado", nombre: "Transferencia" },
+  { key: "pagoQrHabilitado", nombre: "QR" },
+];
 
 const MODULOS: {
   key: ClaveModulo;
@@ -44,6 +65,32 @@ const MODULOS: {
   },
 ];
 
+/** Switch on/off reutilizado por módulos, mesa y métodos de pago. */
+function ToggleSwitch({ activo, disabled, onClick }: { activo: boolean; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={activo}
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+        activo ? "bg-emerald-600" : "bg-neutral-300"
+      }`}
+    >
+      {/* left-1 fijo (no dejar que el navegador calcule la posición inicial
+          sola): sin un left explícito, un elemento absolute dentro de un
+          botón relative puede terminar posicionado mal y quedar la bolita
+          sobresaliendo fuera del riel en vez de encima. translate-x-0/-5
+          la mueve desde ese punto fijo hasta el otro extremo. */}
+      <span
+        className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          activo ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+}
+
 function describirFlujo(config: Configuracion): string {
   const pasos = ["Caja"];
   if (config.cocinaHabilitada) pasos.push("Cocina");
@@ -64,8 +111,10 @@ function describirFlujo(config: Configuracion): string {
 export function AdminConfiguracionPage() {
   const { token } = useAuth();
   const { configuracion, cargando } = useConfiguracion();
-  const [guardando, setGuardando] = useState<ClaveModulo | null>(null);
+  const [guardando, setGuardando] = useState<ClaveToggle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrPreview, setQrPreview] = useState<string | null>(null);
+  const [guardandoQr, setGuardandoQr] = useState(false);
 
   const [negocio, setNegocio] = useState({
     nombreNegocio: configuracion.nombreNegocio,
@@ -91,7 +140,7 @@ export function AdminConfiguracionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargando]);
 
-  async function alternar(clave: ClaveModulo) {
+  async function alternar(clave: ClaveToggle) {
     setGuardando(clave);
     setError(null);
     try {
@@ -105,6 +154,37 @@ export function AdminConfiguracionPage() {
       setError(err instanceof ApiError ? err.message : "No se pudo guardar la configuración");
     } finally {
       setGuardando(null);
+    }
+  }
+
+  async function onQrSeleccionado(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setGuardandoQr(true);
+    try {
+      // maxDim/quality altos y PNG (sin pérdida): un QR comprimido como JPEG
+      // chico puede perder nitidez en los módulos y dejar de ser escaneable.
+      const dataUrl = await resizeImageToDataUrl(file, 640, 1, "image/png");
+      setQrPreview(dataUrl);
+      await apiFetch("/configuracion", token, { method: "PATCH", body: JSON.stringify({ qrPagoUrl: dataUrl }) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo procesar la imagen del QR");
+    } finally {
+      setGuardandoQr(false);
+    }
+  }
+
+  async function quitarQr() {
+    setError(null);
+    setGuardandoQr(true);
+    try {
+      await apiFetch("/configuracion", token, { method: "PATCH", body: JSON.stringify({ qrPagoUrl: null }) });
+      setQrPreview(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo quitar el QR");
+    } finally {
+      setGuardandoQr(false);
     }
   }
 
@@ -200,24 +280,71 @@ export function AdminConfiguracionPage() {
                 <p className="font-medium text-neutral-900">{nombre}</p>
                 <p className="text-xs text-neutral-500">{descripcion}</p>
               </div>
-              <button
-                role="switch"
-                aria-checked={configuracion[key]}
-                onClick={() => alternar(key)}
-                disabled={guardando === key}
-                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                  configuracion[key] ? "bg-emerald-600" : "bg-neutral-300"
-                }`}
-              >
-                <span
-                  className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                    configuracion[key] ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <ToggleSwitch activo={configuracion[key]} disabled={guardando === key} onClick={() => alternar(key)} />
+            </li>
+          ))}
+          <li className="flex items-center gap-3 py-3">
+            <IconMesa width={20} height={20} className="shrink-0 text-neutral-500" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-neutral-900">Número de mesa</p>
+              <p className="text-xs text-neutral-500">
+                Apagalo si tu local no maneja mesas (solo para llevar, o los meseros ya saben a quién le sirven) — Caja
+                deja de pedirlo.
+              </p>
+            </div>
+            <ToggleSwitch
+              activo={configuracion.mesaHabilitada}
+              disabled={guardando === "mesaHabilitada"}
+              onClick={() => alternar("mesaHabilitada")}
+            />
+          </li>
+        </ul>
+      </section>
+
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <IconCoin width={16} height={16} />
+          Métodos de pago en Caja
+        </div>
+        <p className="mb-3 text-xs text-neutral-500">
+          Apagá los que no aceptás todavía. Tiene que quedar al menos uno prendido.
+        </p>
+
+        <ul className="divide-y divide-neutral-100">
+          {METODOS_PAGO.map(({ key, nombre }) => (
+            <li key={key} className="flex items-center gap-3 py-3">
+              <p className="min-w-0 flex-1 font-medium text-neutral-900">{nombre}</p>
+              <ToggleSwitch activo={configuracion[key]} disabled={guardando === key} onClick={() => alternar(key)} />
             </li>
           ))}
         </ul>
+
+        {configuracion.pagoQrHabilitado && (
+          <div className="mt-4 border-t border-neutral-100 pt-4">
+            <p className="mb-2 text-sm font-medium text-neutral-700">Código QR para cobrar</p>
+            <p className="mb-3 text-xs text-neutral-500">
+              Se muestra en pantalla completa en Caja cuando el cajero cobra con QR, para que el cliente lo escanee.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="flex h-20 w-20 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-neutral-400">
+                {qrPreview ?? configuracion.qrPagoUrl ? (
+                  <img src={qrPreview ?? configuracion.qrPagoUrl ?? ""} alt="QR de pago" className="h-full w-full object-contain" />
+                ) : (
+                  <IconCamera width={24} height={24} />
+                )}
+                <input type="file" accept="image/*" className="hidden" onChange={onQrSeleccionado} disabled={guardandoQr} />
+              </label>
+              <div className="text-xs text-neutral-500">
+                <p>{guardandoQr ? "Guardando…" : "Tocá el cuadro para subir o reemplazar el QR."}</p>
+                {(qrPreview ?? configuracion.qrPagoUrl) && (
+                  <button type="button" onClick={quitarQr} disabled={guardandoQr} className="mt-1 text-red-600 disabled:opacity-50">
+                    Quitar QR
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

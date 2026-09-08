@@ -381,3 +381,83 @@ export function IconDescarga(props: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Íconos de comida — respaldo visual cuando un producto/extra no tiene foto
+// propia todavía (ver ImagenProducto.tsx). Elegidos por tipo de alimento para
+// que la cajera reconozca de un vistazo qué es, en vez de un cuadro vacío.
+// ---------------------------------------------------------------------------
+
+export function IconComidaCarne(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6.2 12.3c-1.7-1.7-1.7-4.5.2-6.3 2.1-2 5.3-2.3 7.5-.3 1.7 1.6 1.9 4.1.5 6-1.9 2.6-5.3 3.5-8.2 2.1Z" />
+      <path d="M8.3 9.3h1.8M8.9 11.6h2.1" />
+    </svg>
+  );
+}
+
+export function IconComidaPollo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M8.3 4.8c2.6 0 4.7 2 4.7 4.6 0 1.9-1 3.4-2.5 4.2l-2.9 3.3a1.2 1.2 0 0 1-1.9-1.6l2.8-3c-1-.8-1.7-2.3-1.7-4 0-1.8.6-3.5 1.5-3.5Z" />
+      <circle cx="13.8" cy="15.6" r="1" />
+    </svg>
+  );
+}
+
+export function IconComidaChorizo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M4.7 13.8c-1-2.6.3-5.4 3-6.5l4.7-2c1.9-.8 3.9 1.2 3.1 3.1l-2 4.7c-1.1 2.7-4 4-6.5 3a3.8 3.8 0 0 1-2.3-2.3Z" />
+      <path d="M8.4 8.4 9.9 10M11 6.8l1.5 1.5" />
+    </svg>
+  );
+}
+
+export function IconComidaArroz(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3.7 10.2h12.6a6.3 4.6 0 0 1-12.6 0Z" />
+      <path d="M9.7 4.3c.4.6.2 1.1-.3 1.5M12.2 5c.4.6.2 1.1-.3 1.5" />
+    </svg>
+  );
+}
+
+export function IconComidaPapas(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M5.3 9 4.5 16.2h11l-.8-7.2Z" />
+      <path d="M7.2 9V5.3M9.4 9V4.5M11.6 9V5.3M13.8 9V6.1" />
+    </svg>
+  );
+}
+
+export function IconComidaEnsalada(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3.7 10.2h12.6a6.3 4.6 0 0 1-12.6 0Z" />
+      <path d="M8 9c.2-2 1.7-3.6 3.6-3.8-.3 2-1.8 3.6-3.6 3.8Z" />
+    </svg>
+  );
+}
+
+export function IconComidaBebida(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <path d="M6.2 5h7.6l-1 11a1 1 0 0 1-1 .9H8.2a1 1 0 0 1-1-.9L6.2 5Z" />
+      <path d="M6.6 8.2h7.2" />
+      <path d="M13.3 3.3 11.3 8" />
+    </svg>
+  );
+}
+
+/** Plato genérico — respaldo cuando ningún tipo de comida específico calza. */
+export function IconComidaPlato(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="10" cy="10" r="6.3" />
+      <circle cx="10" cy="10" r="2.8" />
+    </svg>
+  );
+}

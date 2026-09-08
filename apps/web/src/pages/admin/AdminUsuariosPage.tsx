@@ -4,8 +4,8 @@ import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
-import { IconCheck, IconLock, IconPlus, IconTag, IconUser } from "../../components/icons";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { IconAlerta, IconCheck, IconLock, IconPlus, IconTag, IconUser } from "../../components/icons";
+import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
 
 const ROLES: { valor: RolEstacion; etiqueta: string; descripcion: string }[] = [
   { valor: "cajero", etiqueta: "Cajero", descripcion: "Toma y cobra pedidos en /caja." },
@@ -30,6 +30,8 @@ export function AdminUsuariosPage() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"TODOS" | "ACTIVOS" | "INACTIVOS">("TODOS");
   const [error, setError] = useState<string | null>(null);
+  const [usuarioAConfirmar, setUsuarioAConfirmar] = useState<UsuarioEstacion | null>(null);
+  const [cambiandoEstado, setCambiandoEstado] = useState(false);
 
   async function cargar() {
     setUsuarios(await apiFetch<UsuarioEstacion[]>("/usuarios", token));
@@ -40,13 +42,21 @@ export function AdminUsuariosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  async function alternarActivo(u: UsuarioEstacion) {
+  async function confirmarCambioEstado() {
+    if (!usuarioAConfirmar) return;
+    setCambiandoEstado(true);
     setError(null);
     try {
-      await apiFetch(`/usuarios/${u.id}`, token, { method: "PATCH", body: JSON.stringify({ activo: !u.activo }) });
+      await apiFetch(`/usuarios/${usuarioAConfirmar.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ activo: !usuarioAConfirmar.activo }),
+      });
+      setUsuarioAConfirmar(null);
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo cambiar el estado");
+    } finally {
+      setCambiandoEstado(false);
     }
   }
 
@@ -106,58 +116,41 @@ export function AdminUsuariosPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre visible de la cuenta (aparece en tickets y pantallas).">Nombre</Th>
-                <Th hint="Usuario con el que se inicia sesión.">Usuario</Th>
-                <Th hint="Qué pantalla puede usar esta cuenta — se valida en el servidor, no solo ocultando botones.">Rol</Th>
-                <Th hint="Cuándo se creó esta cuenta.">Creada</Th>
-                <Th align="center" hint="Una cuenta inactiva no puede iniciar sesión, pero su historial (pedidos cobrados, movimientos) se conserva.">
-                  Estado
-                </Th>
-                <Th align="right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filtrados.map((u) => (
-                <tr key={u.id} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">
-                    {u.nombre}
-                    {u.id === yo?.id && <span className="ml-1.5 text-xs font-normal text-neutral-400">(vos)</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-neutral-500">{u.username}</td>
-                  <td className="px-3 py-2.5">
-                    <Badge tono="azul">{ROL_LABEL[u.rol] ?? u.rol}</Badge>
-                  </td>
-                  <td className="px-3 py-2.5 text-neutral-500">{formatoFecha(u.creadoEn)}</td>
-                  <td className="px-3 py-2.5 text-center">
-                    <button onClick={() => alternarActivo(u)}>
-                      <Badge tono={u.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
-                        {u.activo ? "Activa" : "Inactiva"}
-                      </Badge>
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <button
-                      onClick={() => setEditando(u)}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-900"
-                    >
-                      <IconLock width={13} height={13} />
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <FilaVacia colSpan={6}>
-                  {usuarios.length === 0 ? "No hay cuentas de estación todavía." : "Ninguna cuenta coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {filtrados.map((u) => (
+            <li key={u.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">
+                  {u.nombre}
+                  {u.id === yo?.id && <span className="ml-1.5 text-xs font-normal text-neutral-400">(vos)</span>}
+                </p>
+                <p className="text-xs text-neutral-500">
+                  {u.username} · creada {formatoFecha(u.creadoEn)}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <Badge tono="azul">{ROL_LABEL[u.rol] ?? u.rol}</Badge>
+                  <button onClick={() => setUsuarioAConfirmar(u)}>
+                    <Badge tono={u.activo ? "verde" : "gris"} hint="Click para activar/desactivar.">
+                      {u.activo ? "Activa" : "Inactiva"}
+                    </Badge>
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditando(u)}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+              >
+                <IconLock width={13} height={13} />
+                Editar
+              </button>
+            </li>
+          ))}
+          {filtrados.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {usuarios.length === 0 ? "No hay cuentas de estación todavía." : "Ninguna cuenta coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (
@@ -173,6 +166,48 @@ export function AdminUsuariosPage() {
             cargar();
           }}
         />
+      )}
+      {usuarioAConfirmar && (
+        <Modal
+          titulo={usuarioAConfirmar.activo ? "Desactivar cuenta" : "Activar cuenta"}
+          onCerrar={() => setUsuarioAConfirmar(null)}
+        >
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-amber-800">
+            <IconAlerta width={20} height={20} className="mt-0.5 shrink-0" />
+            <p className="text-sm">
+              {usuarioAConfirmar.activo ? (
+                <>
+                  ¿Desactivar <strong>"{usuarioAConfirmar.nombre}"</strong> ({usuarioAConfirmar.username})? Esa
+                  estación no va a poder iniciar sesión hasta que la vuelvas a activar.
+                </>
+              ) : (
+                <>
+                  ¿Activar <strong>"{usuarioAConfirmar.nombre}"</strong> ({usuarioAConfirmar.username})? Va a poder
+                  iniciar sesión de nuevo.
+                </>
+              )}
+            </p>
+          </div>
+          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setUsuarioAConfirmar(null)}
+              disabled={cambiandoEstado}
+              className="flex-1 rounded-lg bg-neutral-100 px-4 py-3 text-sm font-medium text-neutral-700 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmarCambioEstado}
+              disabled={cambiandoEstado}
+              className={`flex-1 rounded-lg px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 ${
+                usuarioAConfirmar.activo ? "bg-red-600" : "bg-emerald-600"
+              }`}
+            >
+              {cambiandoEstado ? "Guardando…" : usuarioAConfirmar.activo ? "Sí, desactivar" : "Sí, activar"}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

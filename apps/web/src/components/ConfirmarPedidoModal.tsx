@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Pedido } from "shared";
 import { Modal } from "./Modal";
 import { IconAlerta } from "./icons";
+import { iconoComida } from "./ImagenProducto";
 
 /**
  * Popup de confirmación en el medio de la pantalla, con el detalle del
@@ -52,16 +53,25 @@ export function ConfirmarPedidoModal({
       )}
 
       <ul className="mb-4 divide-y divide-neutral-100 rounded-lg border border-neutral-100">
-        {pedido.items.map((item) => (
-          <li key={item.id} className="px-3 py-2 text-sm">
-            <span className="font-medium text-neutral-900">
-              {item.cantidad}x {item.nombreProducto}
-            </span>
-            {item.extras.length > 0 && (
-              <span className="text-neutral-500"> ({item.extras.map((e) => e.nombre).join(", ")})</span>
-            )}
-          </li>
-        ))}
+        {pedido.items.map((item) => {
+          // Ícono por tipo de comida (mismo criterio que ImagenProducto en
+          // Caja) — para reconocer de un vistazo qué plato es cada línea sin
+          // tener que leer el nombre completo.
+          const IconoTipo = iconoComida(item.nombreProducto);
+          return (
+            <li key={item.id} className="flex items-center gap-2.5 px-3 py-2 text-sm">
+              <IconoTipo width={20} height={20} className="shrink-0 text-neutral-500" />
+              <span>
+                <span className="font-medium text-neutral-900">
+                  {item.cantidad}x {item.nombreProducto}
+                </span>
+                {item.extras.length > 0 && (
+                  <span className="text-neutral-500"> ({item.extras.map((e) => e.nombre).join(", ")})</span>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
 
       {error && (

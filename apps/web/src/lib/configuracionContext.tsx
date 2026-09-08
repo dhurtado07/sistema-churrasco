@@ -9,11 +9,17 @@ const DEFAULT: Configuracion = {
   cocinaHabilitada: true,
   parrillaHabilitada: true,
   entregaHabilitada: true,
+  mesaHabilitada: true,
   nombreNegocio: "BRASA ARISP",
   direccion: null,
   telefono: null,
   nit: null,
   logoUrl: null,
+  pagoEfectivoHabilitado: true,
+  pagoTarjetaHabilitado: true,
+  pagoTransferenciaHabilitado: true,
+  pagoQrHabilitado: true,
+  qrPagoUrl: null,
 };
 
 interface ConfiguracionContextValue {

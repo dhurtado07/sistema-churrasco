@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { ActivoInventario, EstadoActivoInventario } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconInventario, IconPlus, IconTag } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
 
 const ESTADO_COLOR: Record<EstadoActivoInventario, string> = {
   BUENO: "bg-emerald-100 text-emerald-700",
@@ -73,7 +74,7 @@ export function AdminInventarioPage() {
           icono={IconInventario}
           acento="cian"
           label="Valor estimado"
-          value={`Bs ${valorTotal.toFixed(2)}`}
+          value={`Bs ${formatBs(valorTotal)}`}
           hint="Suma de cantidad × valor unitario de los bienes que coinciden con el filtro."
         />
         <StatCard
@@ -96,7 +97,7 @@ export function AdminInventarioPage() {
         icono={IconInventario}
         acento="cian"
         titulo="Bienes del local"
-        descripcion="El estado se puede cambiar directamente desde la tabla."
+        descripcion="El estado se puede cambiar directamente desde la lista."
         filtros={
           <>
             <FiltroChip activo={filtroEstado === "TODOS"} acento="cian" onClick={() => setFiltroEstado("TODOS")}>
@@ -111,50 +112,36 @@ export function AdminInventarioPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre del bien (ej. Silla plástica, Televisor 42').">Bien</Th>
-                <Th hint="Rubro del bien (ej. mobiliario, electrónica).">Categoría</Th>
-                <Th align="right" hint="Cuántas unidades hay de este bien.">Cantidad</Th>
-                <Th align="right" hint="Precio estimado por unidad, si se registró.">Valor c/u</Th>
-                <Th align="right" hint="Cantidad × valor unitario.">Valor total</Th>
-                <Th align="center" hint="Condición actual del bien — 'Baja' significa que ya no se usa/se dio de baja.">Estado</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filtrados.map((a) => (
-                <tr key={a.id} className="hover:bg-neutral-50">
-                  <td className="px-3 py-2.5 font-medium text-neutral-900">{a.nombre}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{a.categoria ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-right text-neutral-700">{a.cantidad}</td>
-                  <td className="px-3 py-2.5 text-right text-neutral-500">{a.valorUnitario ? `Bs ${a.valorUnitario.toFixed(2)}` : "—"}</td>
-                  <td className="px-3 py-2.5 text-right font-semibold text-neutral-900">
-                    {a.valorUnitario ? `Bs ${(a.valorUnitario * a.cantidad).toFixed(2)}` : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <select
-                      value={a.estado}
-                      onChange={(e) => cambiarEstado(a, e.target.value as EstadoActivoInventario)}
-                      className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${ESTADO_COLOR[a.estado]}`}
-                    >
-                      <option value="BUENO">Bueno</option>
-                      <option value="REGULAR">Regular</option>
-                      <option value="MALO">Malo</option>
-                      <option value="BAJA">Baja</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <FilaVacia colSpan={6}>
-                  {activos.length === 0 ? "No hay bienes registrados todavía." : "Ningún bien coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ul className="divide-y divide-neutral-100">
+          {filtrados.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-neutral-900">{a.nombre}</p>
+                <p className="text-xs text-neutral-500">
+                  {a.categoria ?? "Sin categoría"} · {a.cantidad} unidad{a.cantidad === 1 ? "" : "es"}
+                  {a.valorUnitario
+                    ? ` · Bs ${formatBs(a.valorUnitario)} c/u · Bs ${formatBs(a.valorUnitario * a.cantidad)} total`
+                    : ""}
+                </p>
+              </div>
+              <select
+                value={a.estado}
+                onChange={(e) => cambiarEstado(a, e.target.value as EstadoActivoInventario)}
+                className={`shrink-0 rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${ESTADO_COLOR[a.estado]}`}
+              >
+                <option value="BUENO">Bueno</option>
+                <option value="REGULAR">Regular</option>
+                <option value="MALO">Malo</option>
+                <option value="BAJA">Baja</option>
+              </select>
+            </li>
+          ))}
+          {filtrados.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {activos.length === 0 ? "No hay bienes registrados todavía." : "Ningún bien coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbierto && (

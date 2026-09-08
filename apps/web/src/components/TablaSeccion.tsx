@@ -54,8 +54,11 @@ export function TablaSeccion({
 }) {
   const paleta = ACENTOS[acento];
   return (
-    <section className={`overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm ${className}`}>
-      <div className={`h-1 w-full ${paleta.franja}`} />
+    // Sin overflow-hidden: recortaría cualquier tooltip que se salga del borde de la
+    // tarjeta (ver Tooltip.tsx). La franja de color se redondea a mano en sus propias
+    // esquinas superiores para que igual respete el borde redondeado de la tarjeta.
+    <section className={`rounded-2xl border border-neutral-200 bg-white shadow-sm ${className}`}>
+      <div className={`h-1 w-full rounded-t-2xl ${paleta.franja}`} />
       <div className="p-4">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -104,7 +107,10 @@ export function Th({
       <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
         {children}
         {hint && (
-          <Tooltip texto={hint}>
+          // Tooltip hacia abajo: un <th> siempre está pegado al borde superior de la tabla,
+          // y ese borde suele estar dentro de un contenedor con overflow-x-auto — que por
+          // CSS también recorta el eje vertical, así que uno abriendo hacia arriba no se ve.
+          <Tooltip texto={hint} posicion="abajo">
             <IconInfo width={13} height={13} className="text-neutral-400" />
           </Tooltip>
         )}
@@ -200,6 +206,71 @@ export function Badge({
     </span>
   );
   return hint ? <Tooltip texto={hint}>{pill}</Tooltip> : pill;
+}
+
+/** Controles de paginación estándar: selector de tamaño de página + anterior/siguiente. */
+export function Paginacion({
+  pagina,
+  totalPaginas,
+  totalItems,
+  tamano,
+  onCambiarPagina,
+  onCambiarTamano,
+  tamanosDisponibles = [25, 50, 100],
+}: {
+  pagina: number;
+  totalPaginas: number;
+  totalItems: number;
+  tamano: number;
+  onCambiarPagina: (pagina: number) => void;
+  onCambiarTamano: (tamano: number) => void;
+  tamanosDisponibles?: number[];
+}) {
+  if (totalItems === 0) return null;
+  const inicio = (pagina - 1) * tamano + 1;
+  const fin = Math.min(pagina * tamano, totalItems);
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
+      <div className="flex items-center gap-1.5">
+        <span>Mostrar</span>
+        <select
+          value={tamano}
+          onChange={(e) => onCambiarTamano(Number(e.target.value))}
+          className="rounded-lg border border-neutral-300 px-1.5 py-1 text-xs"
+        >
+          {tamanosDisponibles.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <span>
+          por página · {inicio}–{fin} de {totalItems}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          disabled={pagina <= 1}
+          onClick={() => onCambiarPagina(pagina - 1)}
+          className="rounded-lg border border-neutral-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Anterior
+        </button>
+        <span>
+          Página {pagina} de {totalPaginas}
+        </span>
+        <button
+          type="button"
+          disabled={pagina >= totalPaginas}
+          onClick={() => onCambiarPagina(pagina + 1)}
+          className="rounded-lg border border-neutral-300 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Fila "vacío" que ocupa todo el ancho de la tabla. */

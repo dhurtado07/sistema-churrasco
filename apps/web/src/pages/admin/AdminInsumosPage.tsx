@@ -6,7 +6,7 @@ import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconAlerta, IconCheck, IconCompra, IconInventario, IconPlus, IconTag } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
 
 const UNIDADES: UnidadInsumo[] = ["kg", "litro", "unidad", "paquete"];
 
@@ -107,62 +107,50 @@ export function AdminInsumosPage() {
           </>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Nombre del insumo.">Insumo</Th>
-                <Th hint="Rubro (ej. carnes, verduras).">Categoría</Th>
-                <Th align="right" hint="Cuánto hay ahora mismo — baja con cada venta que use este insumo en su receta, sube con cada compra linkeada.">
-                  Stock actual
-                </Th>
-                <Th align="right" hint="Debajo de este número se marca como 'stock bajo' — configuralo pensando en cuántos días te toma reponer.">
-                  Stock mínimo
-                </Th>
-                <Th align="center">Estado</Th>
-                <Th align="right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {filtrados.map((i) => {
-                const estado = estadoStock(i);
-                return (
-                  <tr key={i.id} className="hover:bg-neutral-50">
-                    <td className="px-3 py-2.5 font-medium text-neutral-900">
-                      {i.nombre}
-                      {!i.activo && <span className="ml-1.5 text-xs font-normal text-neutral-400">(inactivo)</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-neutral-600">{i.categoria ?? "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-neutral-900">
+        <ul className="divide-y divide-neutral-100">
+          {filtrados.map((i) => {
+            const estado = estadoStock(i);
+            return (
+              <li key={i.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-neutral-900">
+                    {i.nombre}
+                    {!i.activo && <span className="ml-1.5 text-xs font-normal text-neutral-400">(inactivo)</span>}
+                  </p>
+                  <p className="text-xs text-neutral-500">{i.categoria ?? "Sin categoría"}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-semibold text-neutral-900">
                       {i.stockActual.toFixed(2)} {i.unidad}
-                    </td>
-                    <td className="px-3 py-2.5 text-right text-neutral-500">
-                      {i.stockMinimo.toFixed(2)} {i.unidad}
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <Badge tono={estado.tono}>{estado.etiqueta}</Badge>
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button onClick={() => setAjustando(i)} className="text-xs font-medium text-neutral-500 hover:text-neutral-900">
-                          Ajustar
-                        </button>
-                        <button onClick={() => setEditando(i)} className="text-xs font-medium text-neutral-500 hover:text-neutral-900">
-                          Editar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtrados.length === 0 && (
-                <FilaVacia colSpan={6}>
-                  {insumos.length === 0 ? "No hay insumos registrados todavía." : "Ningún insumo coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </span>
+                    <span className="text-xs text-neutral-400">
+                      (mínimo {i.stockMinimo.toFixed(2)} {i.unidad})
+                    </span>
+                    <Badge tono={estado.tono}>{estado.etiqueta}</Badge>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => setAjustando(i)}
+                    className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+                  >
+                    Ajustar
+                  </button>
+                  <button
+                    onClick={() => setEditando(i)}
+                    className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+                  >
+                    Editar
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+          {filtrados.length === 0 && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {insumos.length === 0 ? "No hay insumos registrados todavía." : "Ningún insumo coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalNuevo && (

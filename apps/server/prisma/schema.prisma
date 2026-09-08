@@ -38,11 +38,27 @@ model Configuracion {
   cocinaHabilitada   Boolean @default(true)
   parrillaHabilitada Boolean @default(true)
   entregaHabilitada  Boolean @default(true)
+  // No todos los restaurantes atienden por número de mesa (algunos son solo
+  // para llevar, o el mesero ya sabe a quién le sirve) — si está apagado, Caja
+  // no pide el número y las pantallas no lo muestran.
+  mesaHabilitada     Boolean @default(true)
   nombreNegocio      String  @default("BRASA ARISP")
   direccion          String?
   telefono           String?
   nit                String?
   logoUrl            String?
+  // Qué métodos de pago ofrece Caja al cobrar — un local puede no aceptar
+  // tarjeta o transferencia todavía. Efectivo no se puede apagar del todo
+  // (ver validación en configuracion/service.ts): siempre debe quedar al
+  // menos una forma de cobrar.
+  pagoEfectivoHabilitado      Boolean @default(true)
+  pagoTarjetaHabilitado       Boolean @default(true)
+  pagoTransferenciaHabilitado Boolean @default(true)
+  pagoQrHabilitado            Boolean @default(true)
+  // QR estático (ej. de Bimo/QR simple) que se muestra en pantalla completa
+  // para que el cliente lo escanee — no es un cobro verificado automáticamente,
+  // el cajero confirma a mano que le llegó el pago antes de cerrar el ticket.
+  qrPagoUrl                   String?
 }
 
 model Usuario {

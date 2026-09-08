@@ -1,3 +1,5 @@
+import { formatBs } from "../lib/format";
+
 // Gráficos hechos a mano con SVG/CSS puro (sin librería): el proyecto ya
 // venía así (ver GraficoSerie original) — se mantiene el enfoque porque no
 // depende de ResizeObserver ni mediciones en JS, así que no puede "temblar"
@@ -20,10 +22,29 @@ const GRIS_EJE = "#c3c2b7";
 const GRIS_GRILLA = "#e1e0d9";
 const GRIS_TEXTO = "#898781";
 
-/** Línea de tiempo con varias series — un solo eje (nunca doble eje: todas
- * las series comparten unidad, Bs). Con puntos + tooltip nativo (<title>) y
- * leyenda con swatch de color. */
-export function LineaTiempo<T extends { etiqueta: string }>({
+/** Camino de una barra vertical con esquinas redondeadas solo en el extremo
+ * "de dato" (arriba si es positiva, abajo si es negativa) y esquina recta
+ * pegada a la línea base — nunca al revés, para que se note de dónde "crece"
+ * cada barra. */
+function caminoBarra(x: number, ancho: number, yBase: number, yDato: number, radio: number): string {
+  const positiva = yDato < yBase;
+  const alto = Math.abs(yBase - yDato);
+  const r = Math.min(radio, ancho / 2, alto);
+  if (r <= 0.5) {
+    return `M${x},${yBase} H${x + ancho} V${yDato} H${x} Z`;
+  }
+  if (positiva) {
+    return `M${x},${yBase} V${yDato + r} Q${x},${yDato} ${x + r},${yDato} H${x + ancho - r} Q${x + ancho},${yDato} ${x + ancho},${yDato + r} V${yBase} Z`;
+  }
+  return `M${x},${yBase} V${yDato - r} Q${x},${yDato} ${x + r},${yDato} H${x + ancho - r} Q${x + ancho},${yDato} ${x + ancho},${yDato - r} V${yBase} Z`;
+}
+
+/** Barras agrupadas por período — para comparar varias series de la misma
+ * unidad a lo largo del tiempo cuando alguna puede ser negativa (ej. ganancia
+ * neta un día en rojo). Mucho más fácil de leer que líneas superpuestas
+ * cuando hay pocos puntos en el eje X: cada período es un grupito de barras
+ * una al lado de la otra, no algo que hay que "seguir" cruzando el gráfico. */
+export function BarrasAgrupadas<T extends { etiqueta: string }>({
   datos,
   series,
   formatear = (v: number) => v.toFixed(0),
@@ -37,7 +58,7 @@ export function LineaTiempo<T extends { etiqueta: string }>({
   }
 
   const ANCHO = 640;
-  const ALTO = 220;
+  const ALTO = 240;
   const PAD_IZQ = 56;
   const PAD_DER = 12;
   const PAD_SUP = 14;
@@ -50,14 +71,18 @@ export function LineaTiempo<T extends { etiqueta: string }>({
   const min = Math.min(...valores, 0);
   const rango = max - min || 1;
 
-  const x = (i: number) => (datos.length === 1 ? PAD_IZQ + anchoUtil / 2 : PAD_IZQ + (i / (datos.length - 1)) * anchoUtil);
   const y = (v: number) => PAD_SUP + altoUtil - ((v - min) / rango) * altoUtil;
   const yCero = y(0);
+
+  const anchoGrupo = anchoUtil / datos.length;
+  const GAP = 2; // separador entre barras vecinas dentro de un mismo grupo
+  const anchoBarra = Math.min(24, (anchoGrupo * 0.75 - GAP * (series.length - 1)) / series.length);
+  const anchoCluster = anchoBarra * series.length + GAP * (series.length - 1);
   const paso = Math.max(1, Math.ceil(datos.length / 7));
 
   return (
     <div>
-      <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="w-full" style={{ maxHeight: 260 }} role="img" aria-label="Gráfico de línea en el tiempo">
+      <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="w-full" style={{ maxHeight: 280 }} role="img" aria-label="Gráfico de barras agrupadas por período">
         <line x1={PAD_IZQ} y1={PAD_SUP} x2={PAD_IZQ} y2={PAD_SUP + altoUtil} stroke={GRIS_GRILLA} strokeWidth={1} />
         <line x1={PAD_IZQ} y1={yCero} x2={ANCHO - PAD_DER} y2={yCero} stroke={GRIS_EJE} strokeWidth={1} />
         <text x={2} y={PAD_SUP + 4} fontSize={10} fill={GRIS_TEXTO}>
@@ -72,31 +97,35 @@ export function LineaTiempo<T extends { etiqueta: string }>({
           </text>
         )}
 
-        {series.map(({ clave, color }) => (
-          <polyline
-            key={clave}
-            points={datos.map((d, i) => `${x(i)},${y(Number(d[clave]) || 0)}`).join(" ")}
-            fill="none"
-            stroke={color}
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-
-        {series.map(({ clave, color, nombre }) =>
-          datos.map((d, i) => (
-            <circle key={`${clave}-${i}`} cx={x(i)} cy={y(Number(d[clave]) || 0)} r={2.75} fill={color} stroke="#fcfcfb" strokeWidth={1}>
-              <title>
-                {nombre} · {d.etiqueta}: {formatear(Number(d[clave]) || 0)}
-              </title>
-            </circle>
-          )),
-        )}
+        {datos.map((d, i) => {
+          const inicioCluster = PAD_IZQ + i * anchoGrupo + (anchoGrupo - anchoCluster) / 2;
+          return (
+            <g key={d.etiqueta}>
+              {series.map((s, j) => {
+                const valor = Number(d[s.clave]) || 0;
+                const xBarra = inicioCluster + j * (anchoBarra + GAP);
+                return (
+                  <path key={s.clave} d={caminoBarra(xBarra, anchoBarra, yCero, y(valor), 4)} fill={s.color}>
+                    <title>
+                      {s.nombre} · {d.etiqueta}: {formatear(valor)}
+                    </title>
+                  </path>
+                );
+              })}
+            </g>
+          );
+        })}
 
         {datos.map((d, i) =>
           i % paso === 0 || i === datos.length - 1 ? (
-            <text key={d.etiqueta} x={x(i)} y={ALTO - 6} fontSize={9} fill={GRIS_TEXTO} textAnchor="middle">
+            <text
+              key={d.etiqueta}
+              x={PAD_IZQ + i * anchoGrupo + anchoGrupo / 2}
+              y={ALTO - 6}
+              fontSize={9}
+              fill={GRIS_TEXTO}
+              textAnchor="middle"
+            >
               {String(d.etiqueta).length === 7 ? String(d.etiqueta).slice(5) : String(d.etiqueta).slice(5).replace("-", "/")}
             </text>
           ) : null,
@@ -126,7 +155,7 @@ export function Leyenda({ items }: { items: { color: string; etiqueta: string }[
 export function BarrasCategoria({
   datos,
   colorPorClave,
-  formatear = (v: number) => `Bs ${v.toFixed(2)}`,
+  formatear = (v: number) => `Bs ${formatBs(v)}`,
 }: {
   datos: { clave: string; etiqueta: string; total: number }[];
   colorPorClave: Record<string, string>;
@@ -164,35 +193,43 @@ export function BarrasCategoria({
 
 /** Barras de "ranking" de un solo color — para cuando cada barra ya se
  * identifica por su etiqueta (ej. nombre de producto) y el color no necesita
- * cargar identidad, solo magnitud. */
+ * cargar identidad, solo magnitud. Cada fila se muestra como líneas
+ * etiquetadas explícitas (ej. "Plato: X" / "Cantidad de platos vendidos: N" /
+ * "Total: Bs Y") en vez de un solo renglón compacto, para que el número no
+ * quede ambiguo (¿es plata? ¿es cantidad?). */
 export function BarrasRanking<T extends { etiqueta: string; total: number }>({
   datos,
   color = PALETA.azul,
-  formatear = (v: number) => `Bs ${v.toFixed(2)}`,
-  subEtiqueta,
+  formatear = (v: number) => `Bs ${formatBs(v)}`,
+  etiquetaPrefijo = "",
+  detalle,
 }: {
   datos: T[];
   color?: string;
   formatear?: (v: number) => string;
-  subEtiqueta?: (d: T) => string;
+  /** Antepuesto al nombre de cada fila, ej. "Plato: ". */
+  etiquetaPrefijo?: string;
+  /** Línea de detalle propia debajo del nombre, ya con su etiqueta (ej. "Cantidad de platos vendidos: 12"). */
+  detalle?: (d: T) => string;
 }) {
   if (datos.length === 0) {
     return <p className="text-sm text-neutral-400">Sin datos en este período.</p>;
   }
   const max = Math.max(...datos.map((d) => d.total), 1);
   return (
-    <ul className="space-y-2.5">
+    <ul className="space-y-3.5">
       {datos.map((d, i) => (
         // Índice + etiqueta (no solo etiqueta): dos productos distintos
         // pueden compartir nombre en datos de prueba/reales.
-        <li key={`${i}-${d.etiqueta}`} title={`${d.etiqueta}: ${formatear(d.total)}`}>
-          <div className="mb-1 flex items-center justify-between text-xs text-neutral-600">
-            <span className="truncate font-medium text-neutral-800">
-              {d.etiqueta}
-              {subEtiqueta && <span className="ml-1 font-normal text-neutral-400">{subEtiqueta(d)}</span>}
-            </span>
-            <span className="shrink-0 font-semibold text-neutral-900">{formatear(d.total)}</span>
-          </div>
+        <li key={`${i}-${d.etiqueta}`}>
+          <p className="truncate text-xs text-neutral-500">
+            {etiquetaPrefijo}
+            <span className="font-semibold text-neutral-900">{d.etiqueta}</span>
+          </p>
+          {detalle && <p className="text-xs text-neutral-500">{detalle(d)}</p>}
+          <p className="mb-1 text-xs text-neutral-500">
+            Total: <span className="font-semibold text-neutral-900">{formatear(d.total)}</span>
+          </p>
           <div className="h-3 w-full rounded-full bg-neutral-100">
             <div
               className="h-full rounded-full"
@@ -211,7 +248,7 @@ export function BarrasRanking<T extends { etiqueta: string; total: number }>({
 export function Dona({
   datos,
   colorPorClave,
-  formatear = (v: number) => `Bs ${v.toFixed(2)}`,
+  formatear = (v: number) => `Bs ${formatBs(v)}`,
   centroLabel,
 }: {
   datos: { clave: string; etiqueta: string; total: number }[];

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { actualizarConfiguracionSchema } from "shared";
-import { actualizarConfiguracion, obtenerConfiguracion } from "./service.js";
+import { actualizarConfiguracion, ConfiguracionValidationError, obtenerConfiguracion } from "./service.js";
 import { realtime } from "../../ws/socket.js";
 
 export async function configuracionRoutes(fastify: FastifyInstance) {
@@ -17,9 +17,16 @@ export async function configuracionRoutes(fastify: FastifyInstance) {
       const parsed = actualizarConfiguracionSchema.safeParse(request.body);
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
-      const configuracion = await actualizarConfiguracion(parsed.data);
-      realtime.configuracionActualizada(configuracion);
-      return configuracion;
+      try {
+        const configuracion = await actualizarConfiguracion(parsed.data);
+        realtime.configuracionActualizada(configuracion);
+        return configuracion;
+      } catch (error) {
+        if (error instanceof ConfiguracionValidationError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 }

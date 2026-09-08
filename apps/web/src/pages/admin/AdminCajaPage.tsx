@@ -4,10 +4,11 @@ import { SOCKET_EVENTS } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
+import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { IconCheck, IconCoin, IconPlus, IconTag, IconTrash } from "../../components/icons";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion, Th, FilaVacia } from "../../components/TablaSeccion";
+import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
 
 const CATEGORIA_LABEL: Record<string, string> = {
   VENTA: "Venta",
@@ -135,7 +136,7 @@ export function AdminCajaPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Turno abierto</p>
               <p className="text-sm text-neutral-700">
                 {turno.abiertoPorNombre} · desde {formatoHora(turno.abiertoEn)} · fondo inicial Bs{" "}
-                {turno.fondoInicial.toFixed(2)}
+                {formatBs(turno.fondoInicial)}
               </p>
             </div>
             <button
@@ -148,11 +149,11 @@ export function AdminCajaPage() {
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700">
               <p className="text-xs uppercase tracking-wide">{verHistorico ? "Ingresos del período" : "Ingresos del turno"}</p>
-              <p className="text-lg font-bold">Bs {totalIngresos.toFixed(2)}</p>
+              <p className="text-lg font-bold">Bs {formatBs(totalIngresos)}</p>
             </div>
             <div className="rounded-lg bg-red-50 p-2 text-red-700">
               <p className="text-xs uppercase tracking-wide">{verHistorico ? "Egresos del período" : "Egresos del turno"}</p>
-              <p className="text-lg font-bold">Bs {totalEgresos.toFixed(2)}</p>
+              <p className="text-lg font-bold">Bs {formatBs(totalEgresos)}</p>
             </div>
           </div>
         </section>
@@ -218,67 +219,50 @@ export function AdminCajaPage() {
           </button>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200">
-                <Th hint="Cuándo se registró el movimiento.">Fecha</Th>
-                <Th hint="Descripción del movimiento — para una venta, incluye el número de ticket.">Concepto</Th>
-                <Th hint="En qué se clasifica: venta, compra de insumos, pago a proveedor, sueldo, servicio u otro.">
-                  Categoría
-                </Th>
-                <Th hint="Con qué se cobró o pagó (efectivo, tarjeta, transferencia o QR). Los egresos de compras no siempre tienen método de pago.">
-                  Método
-                </Th>
-                <Th hint="Quién registró el movimiento en el sistema.">Registrado por</Th>
-                <Th align="right" hint="Monto del movimiento. Verde = entró plata, rojo = salió plata.">Monto</Th>
-                <Th align="right" hint="Anular crea un movimiento reverso por el mismo monto — nunca se edita ni se borra el original, para dejar todo trazado.">
-                  Acciones
-                </Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {movimientosFiltrados.map((m) => (
-                <tr key={m.id} className={`hover:bg-neutral-50 ${m.anulado ? "opacity-50" : ""}`}>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-neutral-500">{formatoHora(m.creadoEn)}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={m.anulado ? "text-neutral-400 line-through" : "font-medium text-neutral-900"}>
-                      {m.concepto}
-                    </span>
-                    {m.anulado && (
+        <ul className="divide-y divide-neutral-100">
+          {movimientosFiltrados.map((m) => (
+            <li key={m.id} className={`flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 ${m.anulado ? "opacity-50" : ""}`}>
+              <div className="min-w-0">
+                <p>
+                  <span className={m.anulado ? "text-neutral-400 line-through" : "font-medium text-neutral-900"}>
+                    {m.concepto}
+                  </span>
+                  {m.anulado && (
+                    <span className="ml-1.5">
                       <Badge tono="gris" hint="Este movimiento fue anulado: no cuenta en los totales, pero queda visible para auditoría.">
                         anulado
                       </Badge>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-neutral-600">{CATEGORIA_LABEL[m.categoria] ?? m.categoria}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{m.metodoPago ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-neutral-600">{m.registradoPorNombre}</td>
-                  <td className={`px-3 py-2.5 text-right font-semibold ${m.tipo === "INGRESO" ? "text-emerald-600" : "text-red-600"}`}>
-                    {m.tipo === "INGRESO" ? "+" : "-"}Bs {m.monto.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    {!m.anulado && m.categoria !== "VENTA" && (
-                      <button
-                        onClick={() => anular(m.id)}
-                        title="Anular este movimiento"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-red-600"
-                      >
-                        <IconTrash width={14} height={14} />
-                        Anular
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {movimientosFiltrados.length === 0 && !cargando && (
-                <FilaVacia colSpan={7}>
-                  {movimientos.length === 0 ? "Todavía no hay movimientos en este rango." : "Ningún movimiento coincide con el filtro."}
-                </FilaVacia>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-neutral-500">
+                  {formatoHora(m.creadoEn)} · {CATEGORIA_LABEL[m.categoria] ?? m.categoria}
+                  {m.metodoPago ? ` · ${m.metodoPago}` : ""} · {m.registradoPorNombre}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span className={`font-semibold ${m.tipo === "INGRESO" ? "text-emerald-600" : "text-red-600"}`}>
+                  {m.tipo === "INGRESO" ? "+" : "-"}Bs {formatBs(m.monto)}
+                </span>
+                {!m.anulado && m.categoria !== "VENTA" && (
+                  <button
+                    onClick={() => anular(m.id)}
+                    title="Anular este movimiento"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-red-600"
+                  >
+                    <IconTrash width={14} height={14} />
+                    Anular
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+          {movimientosFiltrados.length === 0 && !cargando && (
+            <p className="py-6 text-center text-sm text-neutral-400">
+              {movimientos.length === 0 ? "Todavía no hay movimientos en este rango." : "Ningún movimiento coincide con el filtro."}
+            </p>
+          )}
+        </ul>
       </TablaSeccion>
 
       {modalAbrir && (
