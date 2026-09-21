@@ -54,8 +54,18 @@ export async function pedidosRoutes(fastify: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
     try {
-      const pedido = await crearPedido(parsed.data, { id: request.user.sub });
-      const movimiento = await registrarVentaPedido(pedido, request.user.sub);
+      const { pedido, esNueva, turnoId } = await crearPedido(parsed.data, { id: request.user.sub });
+      if (!esNueva) {
+        // Reintento de sincronizar la misma venta offline (mismo
+        // origenOfflineId) — ya se había insertado y contado en caja antes;
+        // devolver el pedido tal cual, sin repetir el ingreso ni los avisos
+        // en vivo (si no, la venta quedaría contada dos veces).
+        return reply.code(200).send(pedido);
+      }
+      const movimiento = await registrarVentaPedido(pedido, request.user.sub, {
+        turnoId: turnoId ?? undefined,
+        creadoEn: parsed.data.creadoEnOriginal ? new Date(parsed.data.creadoEnOriginal) : undefined,
+      });
       realtime.cajaMovimientoRegistrado(movimiento);
       if (pedido.estado === "PAGADO") {
         realtime.pedidoNuevo(pedido);

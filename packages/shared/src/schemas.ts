@@ -103,6 +103,24 @@ export const crearPedidoSchema = z.object({
   mesa: z.string().min(1).optional(),
   metodoPago: metodoPagoSchema.default("EFECTIVO"),
   items: z.array(itemPedidoInputSchema).min(1),
+  // Los tres campos de abajo solo vienen de Caja cuando sincroniza una venta
+  // que se hizo sin conexión (ver "modo offline") — en una venta normal
+  // (con internet) nunca se mandan.
+  //
+  // origenOfflineId: generado en el navegador al cobrar sin conexión: hace
+  // que reintentar la sincronización sea seguro (ver Pedido.origenOfflineId
+  // en el schema de Prisma).
+  //
+  // turnoIdOriginal: el turno que estaba abierto en el equipo al momento de
+  // la venta — se usa tal cual aunque para cuando llegue la conexión ese
+  // turno ya se haya cerrado (la venta ya ocurrió en la realidad).
+  //
+  // creadoEnOriginal: la hora real en que se cobró en el equipo, no la hora
+  // en que recién se pudo mandar al servidor — para que los reportes por
+  // fecha y el cierre de turno reflejen cuándo pasó de verdad.
+  origenOfflineId: z.string().min(1).optional(),
+  turnoIdOriginal: z.string().min(1).optional(),
+  creadoEnOriginal: z.string().datetime().optional(),
 });
 
 export const actualizarConfiguracionSchema = z.object({

@@ -4,6 +4,7 @@ import { SocketProvider } from "./lib/socketContext";
 import { ConfiguracionProvider } from "./lib/configuracionContext";
 import { MenuProvider } from "./lib/menuContext";
 import { ConectividadProvider } from "./lib/conectividadContext";
+import { VentasOfflineProvider } from "./lib/ventasOfflineContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AvisoSinConexion } from "./components/AvisoSinConexion";
 import { LoginPage } from "./pages/LoginPage";
@@ -34,6 +35,7 @@ export function App() {
     <AuthProvider>
       <SocketProvider>
         <ConectividadProvider>
+        <VentasOfflineProvider>
         <ConfiguracionProvider>
           <MenuProvider>
           <AvisoSinConexion />
@@ -116,6 +118,7 @@ export function App() {
           </Routes>
           </MenuProvider>
         </ConfiguracionProvider>
+        </VentasOfflineProvider>
         </ConectividadProvider>
       </SocketProvider>
     </AuthProvider>

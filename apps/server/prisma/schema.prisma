@@ -182,6 +182,13 @@ model Pedido {
   completadoEn     DateTime?
   entregadoEn      DateTime?
 
+  // Id generado en el navegador para una venta hecha sin conexión (ver "modo
+  // offline" en Caja) — único, así que si el mismo pedido se reintenta
+  // sincronizar dos veces (ej. la respuesta se perdió por un corte justo al
+  // confirmar), la segunda vez devuelve el pedido ya creado en vez de
+  // duplicar la venta y descontar el stock dos veces.
+  origenOfflineId  String?      @unique
+
   // estado: lo filtran las colas de cocina/parrilla/entrega (listarCola) y el
   // historial de Pedidos en vivo — se consulta todo el tiempo, en cada
   // refresco de esas pantallas. completadoEn: lo filtra cada reporte

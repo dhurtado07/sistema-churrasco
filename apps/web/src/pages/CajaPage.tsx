@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CajaTurno, Configuracion, Extra, MetodoPago, Pedido, Producto, TipoConsumo } from "shared";
+import type { CajaTurno, Configuracion, CrearPedidoInput, Extra, MetodoPago, Pedido, Producto, TipoConsumo } from "shared";
 import { SOCKET_EVENTS } from "shared";
 import { EstacionHeader } from "../components/EstacionHeader";
 import { Modal } from "../components/Modal";
@@ -9,10 +9,12 @@ import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { apiFetch, ApiError } from "../lib/api";
 import { useSocket } from "../lib/socketContext";
 import { puedeModificarse } from "../lib/pedidosDisplay";
-import { useCarrito } from "../lib/useCarrito";
+import { useCarrito, type LineaCarrito } from "../lib/useCarrito";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { useConectividad } from "../lib/conectividadContext";
 import { useMenu } from "../lib/menuContext";
+import { useVentasOffline } from "../lib/ventasOfflineContext";
+import { guardarUltimoTurnoConocido, leerUltimoTurnoConocido } from "../lib/turnoCache";
 import { IconInput } from "../components/IconInput";
 import { ImagenProducto } from "../components/ImagenProducto";
 import {
@@ -44,11 +46,12 @@ const METODOS_PAGO: { valor: MetodoPago; etiqueta: string; configKey: keyof Conf
 ];
 
 export function CajaPage() {
-  const { token } = useAuth();
+  const { token, usuario } = useAuth();
   const socket = useSocket();
   const { configuracion } = useConfiguracion();
   const { online } = useConectividad();
   const { productos, extras } = useMenu();
+  const { pendientes: ventasOfflinePendientes, encolarVenta, descartarVenta } = useVentasOffline();
 
   const { carrito, setCarrito, agregarProducto, cambiarCantidad, toggleExtra, quitarLinea, total } =
     useCarrito(extras);
@@ -63,6 +66,10 @@ export function CajaPage() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ultimoTicket, setUltimoTicket] = useState<Pedido | null>(null);
+  // true cuando el ticket que se está mostrando es de una venta guardada
+  // localmente porque no había conexión — todavía no tiene folio real ni se
+  // puede reimprimir hasta que se sincronice sola con el servidor.
+  const [ultimoTicketPendienteSync, setUltimoTicketPendienteSync] = useState(false);
   const [mostrandoQr, setMostrandoQr] = useState(false);
   const [mostrandoConfirmacion, setMostrandoConfirmacion] = useState(false);
   // undefined = todavía no se sabe (evita mostrar el aviso de "sin turno" un
@@ -74,7 +81,21 @@ export function CajaPage() {
   const [modalAbrirTurno, setModalAbrirTurno] = useState(false);
 
   function cargarTurno() {
-    apiFetch<CajaTurno | null>("/caja/turnos/activo", token).then(setTurnoActivo);
+    apiFetch<CajaTurno | null>("/caja/turnos/activo", token)
+      .then((turno) => {
+        setTurnoActivo(turno);
+        guardarUltimoTurnoConocido(turno);
+      })
+      .catch((err) => {
+        if (err instanceof ApiError) {
+          setTurnoActivo(null);
+          return;
+        }
+        // Sin conexión: no se le puede volver a preguntar al servidor si hay
+        // turno abierto — se usa el último que sabíamos, para no frenar la
+        // venta por algo que ya se sabía antes de perder la señal.
+        setTurnoActivo(leerUltimoTurnoConocido());
+      });
   }
 
   useEffect(() => {
@@ -103,7 +124,12 @@ export function CajaPage() {
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
 
   function cargarPendientes() {
-    apiFetch<Pedido[]>("/pedidos?estado=pendientes", token).then(setPedidosPendientes);
+    apiFetch<Pedido[]>("/pedidos?estado=pendientes", token)
+      .then(setPedidosPendientes)
+      .catch(() => {
+        // Sin conexión — se deja la última lista conocida en pantalla en vez
+        // de vaciarla.
+      });
   }
 
   async function anular(pedido: Pedido) {
@@ -193,42 +219,110 @@ export function CajaPage() {
     }
   }
 
+  /** Arma un "ticket" para mostrar de una en pantalla cuando se cobra sin
+   * conexión — no tiene folio real (lo asigna el servidor recién al
+   * sincronizar), pero sí todo lo que la cajera necesita ver y, llegado el
+   * caso, cobrar/entregar el plato con esa info. */
+  function construirTicketLocal(carritoAlCobrar: LineaCarrito[]): Pedido {
+    return {
+      id: `offline-${crypto.randomUUID()}`,
+      folio: 0,
+      clienteId: null,
+      clienteNombre: clienteNombre.trim() || null,
+      clienteCarnet: clienteCarnet.trim() || null,
+      tipoConsumo,
+      mesa: tipoConsumo === "LOCAL" && configuracion.mesaHabilitada ? mesa.trim() : null,
+      items: carritoAlCobrar.map((linea) => ({
+        id: linea.lineaId,
+        productoId: linea.productoId,
+        nombreProducto: linea.nombre,
+        imagenUrl: null,
+        requiereParrilla: linea.requiereParrilla,
+        cantidad: linea.cantidad,
+        precioUnitario: linea.precioUnitario,
+        extras: linea.extraIds
+          .map((extraId) => extras.find((e) => e.id === extraId))
+          .filter((e): e is Extra => !!e)
+          .map((e) => ({ extraId: e.id, nombre: e.nombre, precio: e.precio })),
+      })),
+      total,
+      estado: "PAGADO",
+      metodoPago,
+      requiereParrilla: carritoAlCobrar.some((l) => l.requiereParrilla),
+      cocinaLista: false,
+      parrillaLista: false,
+      cajeroUsername: usuario?.username ?? "",
+      creadoEn: new Date().toISOString(),
+      cocinaListaEn: null,
+      parrillaListaEn: null,
+      completadoEn: null,
+      entregadoEn: null,
+    };
+  }
+
   async function cobrar() {
-    if (carrito.length === 0) return;
+    if (carrito.length === 0 || !turnoActivo) return;
     if (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim()) {
       setError("Indicá el número de mesa antes de cobrar.");
       return;
     }
     setEnviando(true);
     setError(null);
-    try {
-      const pedido = await apiFetch<Pedido>("/pedidos", token, {
-        method: "POST",
-        body: JSON.stringify({
-          clienteNombre: clienteNombre.trim() || undefined,
-          clienteCarnet: clienteCarnet.trim() || undefined,
-          tipoConsumo,
-          mesa: tipoConsumo === "LOCAL" && configuracion.mesaHabilitada ? mesa.trim() : undefined,
-          metodoPago,
-          items: carrito.map((linea) => ({
-            productoId: linea.productoId,
-            cantidad: linea.cantidad,
-            extraIds: linea.extraIds,
-          })),
-        }),
-      });
+
+    const body: CrearPedidoInput = {
+      clienteNombre: clienteNombre.trim() || undefined,
+      clienteCarnet: clienteCarnet.trim() || undefined,
+      tipoConsumo,
+      mesa: tipoConsumo === "LOCAL" && configuracion.mesaHabilitada ? mesa.trim() : undefined,
+      metodoPago,
+      items: carrito.map((linea) => ({
+        productoId: linea.productoId,
+        cantidad: linea.cantidad,
+        extraIds: linea.extraIds,
+      })),
+    };
+
+    function limpiarFormulario() {
       setMostrandoQr(false);
-      setUltimoTicket(pedido);
       setCarrito([]);
       setClienteNombreInput("");
       setClienteCarnetInput("");
       setTipoConsumo("LOCAL");
       setMesa("");
       setMetodoPago("EFECTIVO");
+    }
+
+    // Sin conexión: no se pierde la venta ni se hace esperar a la cajera —
+    // se guarda tal cual en el equipo y se manda sola apenas vuelva la señal
+    // (ver VentasOfflineProvider). El plato ya se puede entregar.
+    if (!online) {
+      setUltimoTicket(construirTicketLocal(carrito));
+      setUltimoTicketPendienteSync(true);
+      encolarVenta(body, turnoActivo.id, total);
+      limpiarFormulario();
+      setEnviando(false);
+      return;
+    }
+
+    try {
+      const pedido = await apiFetch<Pedido>("/pedidos", token, { method: "POST", body: JSON.stringify(body) });
+      setUltimoTicket(pedido);
+      setUltimoTicketPendienteSync(false);
+      limpiarFormulario();
     } catch (err) {
-      // Si falla estando en el modal de QR, se queda abierto para que la
-      // cajera vea el error ahí mismo y pueda reintentar sin volver a abrirlo.
-      setError(err instanceof Error ? err.message : "No se pudo registrar el pedido");
+      if (!(err instanceof ApiError)) {
+        // navigator/socket todavía no habían detectado el corte, pero la
+        // conexión real falló justo al mandar — mismo camino que arriba, no
+        // se pierde el cobro.
+        setUltimoTicket(construirTicketLocal(carrito));
+        setUltimoTicketPendienteSync(true);
+        encolarVenta(body, turnoActivo.id, total);
+        limpiarFormulario();
+      } else {
+        // Si falla estando en el modal de QR, se queda abierto para que la
+        // cajera vea el error ahí mismo y pueda reintentar sin volver a abrirlo.
+        setError(err.message);
+      }
     } finally {
       setEnviando(false);
     }
@@ -243,7 +337,16 @@ export function CajaPage() {
       <div className="no-imprimir">
       <EstacionHeader titulo="Caja" />
 
-      <div className="flex justify-end px-3 pt-3 sm:px-4">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-3 pt-3 sm:px-4">
+        {ventasOfflinePendientes.length > 0 && (
+          <span
+            className="flex items-center gap-1.5 rounded-lg bg-amber-100 px-3 py-2 text-xs font-medium text-amber-800"
+            title="Se guardaron sin conexión y se mandan solas apenas vuelva la señal"
+          >
+            <IconRefresh width={14} height={14} />
+            {ventasOfflinePendientes.length} venta{ventasOfflinePendientes.length === 1 ? "" : "s"} por sincronizar
+          </span>
+        )}
         <button
           onClick={() => setModalPendientesAbierto(true)}
           className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm"
@@ -539,7 +642,6 @@ export function CajaPage() {
                 carrito.length === 0 ||
                 enviando ||
                 !turnoActivo ||
-                !online ||
                 (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim())
               }
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
@@ -654,7 +756,16 @@ export function CajaPage() {
         />
       )}
 
-      {ultimoTicket && <TicketModal pedido={ultimoTicket} onCerrar={() => setUltimoTicket(null)} />}
+      {ultimoTicket && (
+        <TicketModal
+          pedido={ultimoTicket}
+          pendienteSync={ultimoTicketPendienteSync}
+          onCerrar={() => {
+            setUltimoTicket(null);
+            setUltimoTicketPendienteSync(false);
+          }}
+        />
+      )}
       {modalAbrirTurno && (
         <AbrirTurnoModal
           token={token}
@@ -668,6 +779,31 @@ export function CajaPage() {
       {modalPendientesAbierto && (
         <Modal titulo="Pedidos pendientes" onCerrar={() => setModalPendientesAbierto(false)}>
           {errorAnular && <p className="mb-2 text-sm text-red-600">{errorAnular}</p>}
+          {ventasOfflinePendientes.some((v) => v.errorSincronizacion) && (
+            <div className="mb-4 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-xs font-semibold text-red-800">
+                Ventas hechas sin conexión que no se pudieron sincronizar — revisalas con un admin:
+              </p>
+              <ul className="space-y-2">
+                {ventasOfflinePendientes
+                  .filter((v) => v.errorSincronizacion)
+                  .map((v) => (
+                    <li key={v.id} className="rounded-lg bg-white p-2 text-xs">
+                      <p className="mb-1 text-neutral-700">
+                        Bs {formatBs(v.total)} · {formatoFechaHoraBO(v.creadoEn)}
+                      </p>
+                      <p className="mb-2 text-red-700">{v.errorSincronizacion}</p>
+                      <button
+                        onClick={() => descartarVenta(v.id)}
+                        className="rounded-lg bg-red-100 px-2 py-1 font-medium text-red-700"
+                      >
+                        Ya la resolví — descartar
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
           {pedidosPendientes.length === 0 ? (
             <p className="text-sm text-neutral-400">No hay pedidos pendientes en este momento.</p>
           ) : (
@@ -772,7 +908,15 @@ function QrPagoModal({
   );
 }
 
-function TicketModal({ pedido, onCerrar }: { pedido: Pedido; onCerrar: () => void }) {
+function TicketModal({
+  pedido,
+  pendienteSync,
+  onCerrar,
+}: {
+  pedido: Pedido;
+  pendienteSync: boolean;
+  onCerrar: () => void;
+}) {
   const { token } = useAuth();
   const { configuracion } = useConfiguracion();
   const [reimprimiendo, setReimprimiendo] = useState(false);
@@ -796,7 +940,12 @@ function TicketModal({ pedido, onCerrar }: { pedido: Pedido; onCerrar: () => voi
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-neutral-500">
           {configuracion.nombreNegocio}
         </p>
-        <h2 className="mb-1 text-lg font-bold">Ticket #{pedido.folio}</h2>
+        <h2 className="mb-1 text-lg font-bold">{pendienteSync ? "Ticket — pendiente de sincronizar" : `Ticket #${pedido.folio}`}</h2>
+        {pendienteSync && (
+          <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800 no-imprimir">
+            Se cobró sin conexión — se manda solo al servidor apenas vuelva la señal, no hace falta hacer nada.
+          </p>
+        )}
         <p className="text-xs text-neutral-500">
           {pedido.tipoConsumo === "LOCAL"
             ? configuracion.mesaHabilitada
@@ -841,15 +990,17 @@ function TicketModal({ pedido, onCerrar }: { pedido: Pedido; onCerrar: () => voi
             <IconPrint width={16} height={16} />
             Imprimir
           </button>
-          <button
-            onClick={reimprimir}
-            disabled={reimprimiendo}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium disabled:opacity-50"
-            title="Reenvía el ticket a la impresora térmica de la estación"
-          >
-            <IconRefresh width={16} height={16} />
-            {reimprimiendo ? "Enviando…" : "Reimprimir"}
-          </button>
+          {!pendienteSync && (
+            <button
+              onClick={reimprimir}
+              disabled={reimprimiendo}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium disabled:opacity-50"
+              title="Reenvía el ticket a la impresora térmica de la estación"
+            >
+              <IconRefresh width={16} height={16} />
+              {reimprimiendo ? "Enviando…" : "Reimprimir"}
+            </button>
+          )}
           <button
             onClick={onCerrar}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-3 text-sm font-medium text-white"

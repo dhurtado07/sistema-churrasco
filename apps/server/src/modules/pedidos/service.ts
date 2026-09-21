@@ -165,12 +165,26 @@ export class PedidoValidationError extends Error {}
  * cierre de caja (el movimiento se registra con turnoId null y nunca entra
  * en el efectivoEsperado de ningún turno) — se pierde para la reconciliación
  * de esa plata. Por eso vender sin turno abierto queda bloqueado acá, no solo
- * sugerido en la UI. */
-async function asegurarTurnoAbierto() {
+ * sugerido en la UI.
+ *
+ * Si `turnoIdOriginal` viene (venta hecha offline y recién ahora
+ * sincronizada), no exige que haya un turno abierto EN ESTE momento — la
+ * venta ya ocurrió de verdad cuando ese turno todavía estaba abierto en el
+ * equipo, así que solo confirma que ese turno exista y lo usa tal cual,
+ * aunque ya se haya cerrado mientras tanto. */
+async function resolverTurnoParaVenta(turnoIdOriginal?: string): Promise<string> {
+  if (turnoIdOriginal) {
+    const turno = await prisma.cajaTurno.findUnique({ where: { id: turnoIdOriginal } });
+    if (!turno) {
+      throw new PedidoValidationError("El turno de caja de esta venta (hecha sin conexión) ya no existe.");
+    }
+    return turno.id;
+  }
   const turnoAbierto = await prisma.cajaTurno.findFirst({ where: { estado: "ABIERTO" } });
   if (!turnoAbierto) {
     throw new PedidoValidationError("No hay un turno de caja abierto — abrilo antes de cobrar.");
   }
+  return turnoAbierto.id;
 }
 
 const CONFIG_POR_METODO_PAGO: Record<CrearPedidoInput["metodoPago"], keyof Configuracion> = {
@@ -258,17 +272,42 @@ async function resolverCliente(input: Pick<CrearPedidoInput, "clienteId" | "clie
   return { clienteNombre, clienteCarnet };
 }
 
+export interface ResultadoCrearPedido {
+  pedido: PedidoDTO;
+  /** false si esto era en realidad un reintento de sincronizar la misma
+   * venta offline (mismo origenOfflineId) y ya se había insertado antes —
+   * el caller no debe repetir el ingreso en el libro de caja ni los avisos
+   * en vivo, o la venta quedaría contada dos veces. */
+  esNueva: boolean;
+  /** El turno al que quedó asociada la venta — lo necesita el caller para
+   * registrar el ingreso de caja en ese mismo turno (ver registrarVentaPedido).
+   * null cuando `esNueva` es false: ya se había registrado antes, así que el
+   * caller no vuelve a tocar el libro de caja y no le hace falta. */
+  turnoId: string | null;
+}
+
 export async function crearPedido(
   input: CrearPedidoInput,
   cajero: { id: string },
-): Promise<PedidoDTO> {
-  await asegurarTurnoAbierto();
+): Promise<ResultadoCrearPedido> {
+  if (input.origenOfflineId) {
+    const existente = await prisma.pedido.findUnique({
+      where: { origenOfflineId: input.origenOfflineId },
+      include: pedidoInclude,
+    });
+    if (existente) {
+      return { pedido: toPedidoDTO(existente), esNueva: false, turnoId: null };
+    }
+  }
+
+  const turnoId = await resolverTurnoParaVenta(input.turnoIdOriginal);
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
   const { clienteNombre, clienteCarnet } = await resolverCliente(input);
   const config = await obtenerConfiguracion();
   asegurarMetodoPagoHabilitado(config, input.metodoPago);
   asegurarMesaValida(config, input);
   const estadoInicial = resolverEstadoInicial(config, requiereParrilla);
+  const creadoEn = input.creadoEnOriginal ? new Date(input.creadoEnOriginal) : undefined;
 
   const pedido = await conReintento(() =>
     prisma.$transaction(async (tx) => {
@@ -284,6 +323,8 @@ export async function crearPedido(
           requiereParrilla,
           cajeroId: cajero.id,
           items: { create: itemsData },
+          origenOfflineId: input.origenOfflineId ?? null,
+          ...(creadoEn ? { creadoEn } : {}),
           ...estadoInicial,
         },
         include: pedidoInclude,
@@ -299,7 +340,7 @@ export async function crearPedido(
     }),
   );
 
-  return toPedidoDTO(pedido);
+  return { pedido: toPedidoDTO(pedido), esNueva: true, turnoId };
 }
 
 /** Un pedido solo se puede editar/cancelar mientras nadie en cocina o

@@ -143,11 +143,16 @@ async function registrarMovimiento(
   },
   usuarioId: string,
   refs: { pedidoId?: number; compraId?: string; anulaMovimientoId?: string },
+  // Solo para sincronizar una venta hecha sin conexión: el turno y la hora
+  // real de cuando pasó, en vez del turno abierto ahora mismo y la hora
+  // actual (ver crearPedido#resolverTurnoParaVenta).
+  overrides?: { turnoId?: string; creadoEn?: Date },
 ): Promise<MovimientoCajaDTO> {
-  const turnoActivo = await prisma.cajaTurno.findFirst({ where: { estado: "ABIERTO" } });
+  const turnoId =
+    overrides?.turnoId ?? (await prisma.cajaTurno.findFirst({ where: { estado: "ABIERTO" } }))?.id ?? null;
   const movimiento = await prisma.movimientoCaja.create({
     data: {
-      turnoId: turnoActivo?.id ?? null,
+      turnoId,
       tipo: input.tipo,
       categoria: input.categoria,
       concepto: input.concepto,
@@ -157,6 +162,7 @@ async function registrarMovimiento(
       compraId: refs.compraId ?? null,
       anulaMovimientoId: refs.anulaMovimientoId ?? null,
       registradoPorId: usuarioId,
+      ...(overrides?.creadoEn ? { creadoEn: overrides.creadoEn } : {}),
     },
     include: movimientoInclude,
   });
@@ -203,7 +209,11 @@ export async function anularMovimiento(id: string, usuarioId: string): Promise<M
 // se registra uno nuevo con el monto correcto.
 // ---------------------------------------------------------------------------
 
-export async function registrarVentaPedido(pedido: PedidoDTO, usuarioId: string): Promise<MovimientoCajaDTO> {
+export async function registrarVentaPedido(
+  pedido: PedidoDTO,
+  usuarioId: string,
+  overrides?: { turnoId?: string; creadoEn?: Date },
+): Promise<MovimientoCajaDTO> {
   return registrarMovimiento(
     {
       tipo: "INGRESO",
@@ -214,6 +224,7 @@ export async function registrarVentaPedido(pedido: PedidoDTO, usuarioId: string)
     },
     usuarioId,
     { pedidoId: pedido.folio },
+    overrides,
   );
 }
 
