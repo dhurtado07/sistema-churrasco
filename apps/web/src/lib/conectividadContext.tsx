@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useSocket } from "./socketContext";
 
+// Margen antes de mostrar el aviso de "sin conexión": una reconexión normal
+// del WebSocket (el wifi fluctúa un instante, el celular pasa de wifi a
+// datos, la pantalla se apaga y prende) se resuelve sola en 1-3 segundos —
+// Socket.IO ya reintenta con backoff corto. Sin este margen, cada uno de
+// esos hipos normales prendía el aviso amarillo aunque la conexión real
+// nunca se hubiera perdido de verdad.
+const MARGEN_ANTES_DE_AVISAR_MS = 4000;
+
 interface ConectividadContextValue {
   /** false apenas se detecta que no hay forma de hablar con el servidor —
    * ya sea porque el navegador perdió la red, o porque el WebSocket se cayó
@@ -38,13 +46,27 @@ export function ConectividadProvider({ children }: { children: ReactNode }) {
     // conectar (wifi sin salida real a internet, servidor caído), esto sí
     // lo detecta — navigator.onLine se queda en "true" aunque no llegue a
     // ningún lado.
-    const marcarOnline = () => setOnline(true);
-    const marcarOffline = () => setOnline(false);
+    let temporizador: ReturnType<typeof setTimeout> | null = null;
+    const cancelarAviso = () => {
+      if (temporizador) {
+        clearTimeout(temporizador);
+        temporizador = null;
+      }
+    };
+    const marcarOnline = () => {
+      cancelarAviso();
+      setOnline(true);
+    };
+    const marcarOffline = () => {
+      cancelarAviso();
+      temporizador = setTimeout(() => setOnline(false), MARGEN_ANTES_DE_AVISAR_MS);
+    };
     socket.on("connect", marcarOnline);
     socket.on("disconnect", marcarOffline);
     socket.on("connect_error", marcarOffline);
     if (socket.connected) setOnline(true);
     return () => {
+      cancelarAviso();
       socket.off("connect", marcarOnline);
       socket.off("disconnect", marcarOffline);
       socket.off("connect_error", marcarOffline);
