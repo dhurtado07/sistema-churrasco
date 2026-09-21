@@ -204,7 +204,7 @@ export function EntregaPage() {
                   {marcando === pedido.id
                     ? "Marcando…"
                     : listo
-                      ? "Entregado"
+                      ? "Entregar"
                       : "Esperando cocina/parrilla"}
                 </button>
               </div>
