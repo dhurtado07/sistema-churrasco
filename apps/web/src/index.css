@@ -37,6 +37,16 @@ body {
   overflow-x: clip;
 }
 
+/* Sin esto, Chrome/Edge agregan solos un encabezado y pie de página con la
+   fecha, el título de la pestaña, la URL y el número de página — algo que
+   nadie quiere en un ticket ni en un reporte impreso. Declarar un margen acá
+   (con cualquier valor) hace que el navegador ya no reserve ese espacio para
+   su propio encabezado/pie, sin que el cajero tenga que ir a desactivar
+   "Encabezados y pies de página" a mano en cada impresión. */
+@page {
+  margin: 8mm;
+}
+
 /* Al imprimir un reporte desde /admin, ocultamos la navegación y dejamos
    solo el contenido del reporte. */
 @media print {

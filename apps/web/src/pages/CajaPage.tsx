@@ -3,6 +3,8 @@ import type { CajaTurno, Configuracion, CrearPedidoInput, Extra, MetodoPago, Ped
 import { SOCKET_EVENTS } from "shared";
 import { EstacionHeader } from "../components/EstacionHeader";
 import { Modal } from "../components/Modal";
+import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
+import { TicketModal } from "../components/TicketModal";
 import { AbrirTurnoModal } from "../components/AbrirTurnoModal";
 import { useAuth } from "../lib/auth";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
@@ -28,7 +30,6 @@ import {
   IconMinus,
   IconPedidos,
   IconPlus,
-  IconPrint,
   IconRefresh,
   IconTrash,
   IconUser,
@@ -120,7 +121,7 @@ export function CajaPage() {
 
   const [pedidosPendientes, setPedidosPendientes] = useState<Pedido[]>([]);
   const [modalPendientesAbierto, setModalPendientesAbierto] = useState(false);
-  const [anulando, setAnulando] = useState<string | null>(null);
+  const [pedidoAAnular, setPedidoAAnular] = useState<Pedido | null>(null);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
 
   function cargarPendientes() {
@@ -133,16 +134,13 @@ export function CajaPage() {
   }
 
   async function anular(pedido: Pedido) {
-    if (!confirm(`¿Anular el ticket #${pedido.folio}? Esto no se puede deshacer.`)) return;
-    setAnulando(pedido.id);
     setErrorAnular(null);
     try {
       await apiFetch(`/pedidos/${pedido.folio}/cancelar`, token, { method: "PATCH" });
+      setPedidoAAnular(null);
       cargarPendientes();
     } catch (err) {
       setErrorAnular(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
-    } finally {
-      setAnulando(null);
     }
   }
 
@@ -788,6 +786,8 @@ export function CajaPage() {
         <TicketModal
           pedido={ultimoTicket}
           pendienteSync={ultimoTicketPendienteSync}
+          textoBotonCerrar="Nuevo pedido"
+          iconoBotonCerrar={IconPlus}
           onCerrar={() => {
             setUltimoTicket(null);
             setUltimoTicketPendienteSync(false);
@@ -806,7 +806,6 @@ export function CajaPage() {
       )}
       {modalPendientesAbierto && (
         <Modal titulo="Pedidos pendientes" onCerrar={() => setModalPendientesAbierto(false)}>
-          {errorAnular && <p className="mb-2 text-sm text-red-600">{errorAnular}</p>}
           {ventasOfflinePendientes.some((v) => v.errorSincronizacion) && (
             <div className="mb-4 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-xs font-semibold text-red-800">
@@ -852,12 +851,14 @@ export function CajaPage() {
                   </p>
                   {puedeModificarse(pedido) ? (
                     <button
-                      onClick={() => anular(pedido)}
-                      disabled={anulando === pedido.id}
+                      onClick={() => {
+                        setErrorAnular(null);
+                        setPedidoAAnular(pedido);
+                      }}
                       className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-50"
                     >
                       <IconTrash width={14} height={14} />
-                      {anulando === pedido.id ? "Anulando…" : "Anular"}
+                      Anular
                     </button>
                   ) : (
                     <span className="flex items-center gap-1 text-xs text-neutral-400">
@@ -870,6 +871,21 @@ export function CajaPage() {
             </ul>
           )}
         </Modal>
+      )}
+      {pedidoAAnular && (
+        <ConfirmarPedidoModal
+          pedido={pedidoAAnular}
+          titulo="Anular pedido"
+          pregunta={`¿Anular el ticket #${pedidoAAnular.folio}? Esto no se puede deshacer.`}
+          textoConfirmar="Sí, anular"
+          destructivo
+          error={errorAnular}
+          onConfirmar={() => anular(pedidoAAnular)}
+          onCancelar={() => {
+            setErrorAnular(null);
+            setPedidoAAnular(null);
+          }}
+        />
       )}
     </div>
   );
@@ -931,112 +947,6 @@ function QrPagoModal({
         >
           Cancelar
         </button>
-      </div>
-    </div>
-  );
-}
-
-function TicketModal({
-  pedido,
-  pendienteSync,
-  onCerrar,
-}: {
-  pedido: Pedido;
-  pendienteSync: boolean;
-  onCerrar: () => void;
-}) {
-  const { token } = useAuth();
-  const { configuracion } = useConfiguracion();
-  const [reimprimiendo, setReimprimiendo] = useState(false);
-  const [reimprimirError, setReimprimirError] = useState<string | null>(null);
-
-  async function reimprimir() {
-    setReimprimiendo(true);
-    setReimprimirError(null);
-    try {
-      await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
-    } catch (err) {
-      setReimprimirError(err instanceof Error ? err.message : "No se pudo reimprimir");
-    } finally {
-      setReimprimiendo(false);
-    }
-  }
-
-  return (
-    <div className="ticket-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="ticket-imprimible w-full max-w-sm rounded-t-2xl bg-white p-5 shadow-lg sm:rounded-2xl">
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-neutral-500">
-          {configuracion.nombreNegocio}
-        </p>
-        <h2 className="mb-1 text-lg font-bold">{pendienteSync ? "Ticket — pendiente de sincronizar" : `Ticket #${pedido.folio}`}</h2>
-        {pendienteSync && (
-          <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800 no-imprimir">
-            Se cobró sin conexión — se manda solo al servidor apenas vuelva la señal, no hace falta hacer nada.
-          </p>
-        )}
-        <p className="text-xs text-neutral-500">
-          {pedido.tipoConsumo === "LOCAL"
-            ? configuracion.mesaHabilitada
-              ? `Mesa ${pedido.mesa ?? "?"}`
-              : "En el local"
-            : "Para llevar"}
-          {pedido.clienteNombre ? ` · ${pedido.clienteNombre}` : ""}
-        </p>
-        <p className="mb-3 text-xs text-neutral-500">{formatoFechaHoraBO(pedido.creadoEn)}</p>
-
-        <ul className="mb-3 space-y-2 text-sm">
-          {pedido.items.map((item) => (
-            <li key={item.id}>
-              <div className="flex justify-between">
-                <span>
-                  {item.cantidad}x {item.nombreProducto}
-                </span>
-                <span>Bs {formatBs(item.precioUnitario * item.cantidad)}</span>
-              </div>
-              {item.extras.map((extra) => (
-                <div key={extra.extraId} className="flex justify-between pl-4 text-xs text-neutral-500">
-                  <span>+ {formatoExtra(extra)}</span>
-                  <span>Bs {formatBs(extra.precio * extra.cantidad)}</span>
-                </div>
-              ))}
-            </li>
-          ))}
-        </ul>
-
-        <div className="mb-4 flex justify-between border-t border-neutral-200 pt-2 text-base font-bold">
-          <span>Total</span>
-          <span>Bs {formatBs(pedido.total)}</span>
-        </div>
-
-        {reimprimirError && <p className="mb-2 text-xs text-red-600 no-imprimir">{reimprimirError}</p>}
-
-        <div className="no-imprimir flex gap-2">
-          <button
-            onClick={() => window.print()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium"
-          >
-            <IconPrint width={16} height={16} />
-            Imprimir
-          </button>
-          {!pendienteSync && (
-            <button
-              onClick={reimprimir}
-              disabled={reimprimiendo}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium disabled:opacity-50"
-              title="Reenvía el ticket a la impresora térmica de la estación"
-            >
-              <IconRefresh width={16} height={16} />
-              {reimprimiendo ? "Enviando…" : "Reimprimir"}
-            </button>
-          )}
-          <button
-            onClick={onCerrar}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-3 text-sm font-medium text-white"
-          >
-            <IconPlus width={16} height={16} />
-            Nuevo pedido
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ export function ConfirmarPedidoModal({
   error,
   onConfirmar,
   onCancelar,
+  destructivo,
 }: {
   pedido: Pedido;
   titulo: string;
@@ -29,6 +30,10 @@ export function ConfirmarPedidoModal({
   error?: string | null;
   onConfirmar: () => Promise<void>;
   onCancelar: () => void;
+  /** true para una acción que no se puede deshacer (ej. anular un pedido) —
+   * el botón de confirmar sale en rojo en vez del verde de "todo bien",
+   * como el resto de los botones destructivos de la app. */
+  destructivo?: boolean;
 }) {
   const [confirmando, setConfirmando] = useState(false);
 
@@ -92,7 +97,9 @@ export function ConfirmarPedidoModal({
         <button
           onClick={confirmar}
           disabled={confirmando}
-          className="flex-1 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          className={`flex-1 rounded-lg px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 ${
+            destructivo ? "bg-red-600" : "bg-emerald-600"
+          }`}
         >
           {confirmando ? "Confirmando…" : textoConfirmar}
         </button>

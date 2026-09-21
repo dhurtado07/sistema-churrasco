@@ -6,10 +6,12 @@ import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
 import { useConfiguracion } from "../../lib/configuracionContext";
 import { formatBs, formatoFechaHoraBO } from "../../lib/format";
-import { IconAsistencia, IconCheck, IconEdit, IconSearch, IconTrash } from "../../components/icons";
+import { IconAsistencia, IconCheck, IconEdit, IconPrint, IconSearch, IconTrash } from "../../components/icons";
 import { IconInput } from "../../components/IconInput";
 import { EditarPedidoModal } from "./EditarPedidoModal";
 import { HistorialPedidoModal } from "./HistorialPedidoModal";
+import { ConfirmarPedidoModal } from "../../components/ConfirmarPedidoModal";
+import { TicketModal } from "../../components/TicketModal";
 import {
   ESTADO_BADGE,
   ESTADO_LABEL,
@@ -30,7 +32,8 @@ export function AdminPedidosPage() {
   const [cargando, setCargando] = useState(true);
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null);
   const [pedidoHistorial, setPedidoHistorial] = useState<Pedido | null>(null);
-  const [cancelando, setCancelando] = useState<string | null>(null);
+  const [pedidoACancelar, setPedidoACancelar] = useState<Pedido | null>(null);
+  const [pedidoTicket, setPedidoTicket] = useState<Pedido | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
   // React (StrictMode) puede disparar el efecto de carga dos veces, y un
@@ -93,16 +96,13 @@ export function AdminPedidosPage() {
   });
 
   async function cancelar(pedido: Pedido) {
-    if (!confirm(`¿Anular el ticket #${pedido.folio}? Esto no se puede deshacer.`)) return;
-    setCancelando(pedido.id);
     setError(null);
     try {
       await apiFetch(`/pedidos/${pedido.folio}/cancelar`, token, { method: "PATCH" });
+      setPedidoACancelar(null);
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
-    } finally {
-      setCancelando(null);
     }
   }
 
@@ -132,8 +132,6 @@ export function AdminPedidosPage() {
         className="sm:max-w-xs"
       />
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
       <div className="space-y-3">
         {cargando && <p className="text-sm text-neutral-400">Cargando…</p>}
         {!cargando && pedidosFiltrados.length === 0 && (
@@ -153,9 +151,22 @@ export function AdminPedidosPage() {
                   {formatoFechaHoraBO(pedido.creadoEn)}
                 </span>
               </div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_BADGE[pedido.estado]}`}>
-                {ESTADO_LABEL[pedido.estado]}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {/* Un Pedido solo existe en la base a partir del cobro exitoso
+                    (ver crearPedido) — así que salvo que se haya anulado
+                    después, "existe" y "está pagado" son lo mismo. Se muestra
+                    igual de forma explícita para que quede clarísimo a
+                    simple vista, sin tener que inferirlo del estado de cocina. */}
+                {pedido.estado !== "CANCELADO" && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                    <IconCheck width={12} height={12} />
+                    Pagado
+                  </span>
+                )}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_BADGE[pedido.estado]}`}>
+                  {ESTADO_LABEL[pedido.estado]}
+                </span>
+              </div>
             </div>
 
             <p className="mb-1 text-sm text-neutral-500">
@@ -181,7 +192,17 @@ export function AdminPedidosPage() {
             <div className="flex items-center justify-between">
               <span className="text-lg font-bold text-neutral-900">Bs {formatBs(pedido.total)}</span>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {pedido.estado !== "CANCELADO" && (
+                  <button
+                    onClick={() => setPedidoTicket(pedido)}
+                    title="Ver el ticket y, si hace falta, reimprimirlo — por si se actualizó la página antes de imprimir o la impresora falló"
+                    className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600"
+                  >
+                    <IconPrint width={14} height={14} />
+                    Ticket
+                  </button>
+                )}
                 <button
                   onClick={() => setPedidoHistorial(pedido)}
                   title="Ver historial de ediciones/anulación"
@@ -202,12 +223,14 @@ export function AdminPedidosPage() {
                         Editar
                       </button>
                       <button
-                        onClick={() => cancelar(pedido)}
-                        disabled={cancelando === pedido.id}
+                        onClick={() => {
+                          setError(null);
+                          setPedidoACancelar(pedido);
+                        }}
                         className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-50"
                       >
                         <IconTrash width={14} height={14} />
-                        {cancelando === pedido.id ? "Anulando…" : "Anular"}
+                        Anular
                       </button>
                     </>
                   ) : (
@@ -237,6 +260,22 @@ export function AdminPedidosPage() {
       )}
       {pedidoHistorial && (
         <HistorialPedidoModal pedido={pedidoHistorial} onCerrar={() => setPedidoHistorial(null)} />
+      )}
+      {pedidoTicket && <TicketModal pedido={pedidoTicket} onCerrar={() => setPedidoTicket(null)} />}
+      {pedidoACancelar && (
+        <ConfirmarPedidoModal
+          pedido={pedidoACancelar}
+          titulo="Anular pedido"
+          pregunta={`¿Anular el ticket #${pedidoACancelar.folio}? Esto no se puede deshacer.`}
+          textoConfirmar="Sí, anular"
+          destructivo
+          error={error}
+          onConfirmar={() => cancelar(pedidoACancelar)}
+          onCancelar={() => {
+            setError(null);
+            setPedidoACancelar(null);
+          }}
+        />
       )}
     </div>
   );
