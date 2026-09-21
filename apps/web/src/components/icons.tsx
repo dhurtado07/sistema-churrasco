@@ -25,7 +25,8 @@ export function IconGanancias(props: SVGProps<SVGSVGElement>) {
 export function IconProductos(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base(props)}>
-      <path d="M4 5.5h12M4 10h12M4 14.5h8" />
+      <circle cx="10" cy="10" r="6.3" />
+      <circle cx="10" cy="10" r="2.8" />
     </svg>
   );
 }

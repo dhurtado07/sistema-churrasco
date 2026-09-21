@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import type { Extra, Insumo, Producto, RecetaItem } from "shared";
 import { SOCKET_EVENTS } from "shared";
 import { useAuth } from "../../lib/auth";
@@ -8,11 +8,31 @@ import { resizeImageToDataUrl } from "../../lib/image";
 import { formatBs } from "../../lib/format";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
-import { IconAlerta, IconCamera, IconCheck, IconCoin, IconFolder, IconPlus, IconPower, IconTag, IconTrash } from "../../components/icons";
+import { Campo } from "../../components/Campo";
+import {
+  IconAlerta,
+  IconCamera,
+  IconCheck,
+  IconCoin,
+  IconEdit,
+  IconFolder,
+  IconPlus,
+  IconPower,
+  IconTag,
+  IconTrash,
+} from "../../components/icons";
 import { ImagenProducto } from "../../components/ImagenProducto";
 import { ConfirmActionModal } from "../../components/ConfirmActionModal";
+import { Tabs } from "../../components/Tabs";
+import { NuevoInsumoModal } from "./AdminInsumosPage";
 
-type ConfirmacionToggle = { tipo: "producto"; item: Producto } | { tipo: "extra"; item: Extra };
+type ItemMenu = { tipo: "producto"; item: Producto } | { tipo: "extra"; item: Extra };
+
+// Mismo criterio que Caja: Platos primero, Bebidas después (son las pestañas
+// que más se usan) — cualquier categoría nueva que se cree cae al final, en
+// el orden en que aparece. "Extras" es su propia pestaña, siempre al final.
+const ORDEN_CATEGORIA: Record<string, number> = { Platos: 0, Bebidas: 1 };
+const TAB_EXTRAS = "Extras";
 
 export function AdminProductosPage() {
   const { token } = useAuth();
@@ -24,9 +44,40 @@ export function AdminProductosPage() {
   const [modalProductoAbierto, setModalProductoAbierto] = useState(false);
   const [modalExtraAbierto, setModalExtraAbierto] = useState(false);
   const [productoReceta, setProductoReceta] = useState<Producto | null>(null);
-  const [confirmacionToggle, setConfirmacionToggle] = useState<ConfirmacionToggle | null>(null);
+  const [editandoProducto, setEditandoProducto] = useState<Producto | null>(null);
+  const [editandoExtra, setEditandoExtra] = useState<Extra | null>(null);
+  const [confirmacionToggle, setConfirmacionToggle] = useState<ItemMenu | null>(null);
   const [guardandoToggle, setGuardandoToggle] = useState(false);
   const [errorToggle, setErrorToggle] = useState<string | null>(null);
+  const [confirmacionEliminar, setConfirmacionEliminar] = useState<ItemMenu | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+  const [errorEliminar, setErrorEliminar] = useState<string | null>(null);
+
+  // Categorías ya en uso — para elegir de una lista en vez de escribirla a
+  // mano cada vez (evita "Bebidas" y "bebidas" separándose en dos pestañas
+  // distintas en Caja por una diferencia de mayúsculas).
+  const categoriasExistentes = useMemo(
+    () => [...new Set(productos.map((p) => p.categoria))].sort((a, b) => a.localeCompare(b)),
+    [productos],
+  );
+
+  // Misma idea que las pestañas de Caja: una por categoría (Platos, Bebidas,
+  // la que sea) + Extras al final — para no mezclar todo en una lista larga
+  // a medida que crece el menú.
+  const productosPorCategoria = useMemo(() => {
+    const grupos = new Map<string, Producto[]>();
+    for (const producto of productos) {
+      const lista = grupos.get(producto.categoria) ?? [];
+      lista.push(producto);
+      grupos.set(producto.categoria, lista);
+    }
+    return [...grupos.entries()].sort((a, b) => (ORDEN_CATEGORIA[a[0]] ?? 99) - (ORDEN_CATEGORIA[b[0]] ?? 99));
+  }, [productos]);
+
+  const tabs = useMemo(() => [...productosPorCategoria.map(([categoria]) => categoria), TAB_EXTRAS], [productosPorCategoria]);
+  const [tab, setTab] = useState<string>("Platos");
+  const tabActiva = tabs.includes(tab) ? tab : (tabs[0] ?? TAB_EXTRAS);
+  const productosDeLaTab = productosPorCategoria.find(([categoria]) => categoria === tabActiva)?.[1] ?? [];
 
   useEffect(() => {
     apiFetch<{ productos: Producto[]; extras: Extra[] }>("/admin/menu", token).then((data) => {
@@ -65,14 +116,34 @@ export function AdminProductosPage() {
     }
   }
 
+  async function confirmarEliminar() {
+    if (!confirmacionEliminar) return;
+    setEliminando(true);
+    setErrorEliminar(null);
+    try {
+      const { tipo, item } = confirmacionEliminar;
+      const ruta = tipo === "producto" ? `/admin/productos/${item.id}` : `/admin/extras/${item.id}`;
+      await apiFetch(ruta, token, { method: "DELETE" });
+      setConfirmacionEliminar(null);
+      // El cambio llega solo por WebSocket (menu:actualizado) a todas las pantallas conectadas.
+    } catch (err) {
+      setErrorEliminar(err instanceof ApiError ? err.message : "No se pudo eliminar");
+    } finally {
+      setEliminando(false);
+    }
+  }
+
   return (
-    <div className="space-y-6 p-3 sm:p-4">
+    <div className="space-y-4 p-3 sm:p-4">
       <h1 className="text-lg font-semibold text-neutral-900">Productos del menú</h1>
 
+      <Tabs value={tabActiva} onChange={setTab} tabs={tabs.map((t) => ({ value: t, label: t }))} />
+
+      {tabActiva !== TAB_EXTRAS && (
       <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Productos
+            {tabActiva}
           </h2>
           <button
             onClick={() => setModalProductoAbierto(true)}
@@ -84,7 +155,7 @@ export function AdminProductosPage() {
         </div>
 
         <ul className="divide-y divide-neutral-100">
-          {productos.map((producto) => (
+          {productosDeLaTab.map((producto) => (
             <li key={producto.id} className="flex items-center gap-3 py-2">
               <ImagenProducto
                 imagenUrl={producto.imagenUrl}
@@ -100,6 +171,9 @@ export function AdminProductosPage() {
                   {producto.categoria} · Bs {formatBs(producto.precio)}
                   {producto.requiereParrilla ? " · parrilla" : ""}
                 </p>
+                {producto.descripcion && (
+                  <p className="mt-0.5 text-xs text-neutral-400">{producto.descripcion}</p>
+                )}
               </div>
               <button
                 onClick={() => setProductoReceta(producto)}
@@ -110,18 +184,37 @@ export function AdminProductosPage() {
                 Receta
               </button>
               <button
+                onClick={() => setEditandoProducto(producto)}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
+              >
+                <IconEdit width={14} height={14} />
+                Editar
+              </button>
+              <button
                 onClick={() => setConfirmacionToggle({ tipo: "producto", item: producto })}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
               >
                 <IconPower width={14} height={14} />
                 {producto.activo ? "Desactivar" : "Activar"}
               </button>
+              <button
+                onClick={() => setConfirmacionEliminar({ tipo: "producto", item: producto })}
+                title="Eliminar del catálogo (solo si nunca se vendió)"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600"
+              >
+                <IconTrash width={14} height={14} />
+                Eliminar
+              </button>
             </li>
           ))}
-          {productos.length === 0 && <p className="py-2 text-sm text-neutral-400">Sin productos todavía.</p>}
+          {productosDeLaTab.length === 0 && (
+            <p className="py-2 text-sm text-neutral-400">Sin productos todavía en "{tabActiva}".</p>
+          )}
         </ul>
       </section>
+      )}
 
+      {tabActiva === TAB_EXTRAS && (
       <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Extras</h2>
@@ -146,20 +239,41 @@ export function AdminProductosPage() {
                 {extra.nombre} · Bs {formatBs(extra.precio)}
               </p>
               <button
+                onClick={() => setEditandoExtra(extra)}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
+              >
+                <IconEdit width={14} height={14} />
+                Editar
+              </button>
+              <button
                 onClick={() => setConfirmacionToggle({ tipo: "extra", item: extra })}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium"
               >
                 <IconPower width={14} height={14} />
                 {extra.activo ? "Desactivar" : "Activar"}
               </button>
+              <button
+                onClick={() => setConfirmacionEliminar({ tipo: "extra", item: extra })}
+                title="Eliminar del catálogo (solo si nunca se vendió)"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600"
+              >
+                <IconTrash width={14} height={14} />
+                Eliminar
+              </button>
             </li>
           ))}
           {extras.length === 0 && <p className="py-2 text-sm text-neutral-400">Sin extras todavía.</p>}
         </ul>
       </section>
+      )}
 
       {modalProductoAbierto && (
-        <ProductoModal token={token} onCerrar={() => setModalProductoAbierto(false)} />
+        <ProductoModal
+          token={token}
+          categoriasExistentes={categoriasExistentes}
+          categoriaInicial={tabActiva !== TAB_EXTRAS ? tabActiva : undefined}
+          onCerrar={() => setModalProductoAbierto(false)}
+        />
       )}
       {modalExtraAbierto && <ExtraModal token={token} onCerrar={() => setModalExtraAbierto(false)} />}
       {productoReceta && (
@@ -167,6 +281,7 @@ export function AdminProductosPage() {
           token={token}
           producto={productoReceta}
           insumos={insumos}
+          onInsumoCreado={(insumo) => setInsumos((prev) => [...prev, insumo])}
           onCerrar={() => setProductoReceta(null)}
         />
       )}
@@ -198,6 +313,35 @@ export function AdminProductosPage() {
           onCancelar={() => setConfirmacionToggle(null)}
         />
       )}
+      {editandoProducto && (
+        <EditarProductoModal
+          token={token}
+          producto={editandoProducto}
+          categoriasExistentes={categoriasExistentes}
+          onCerrar={() => setEditandoProducto(null)}
+        />
+      )}
+      {editandoExtra && (
+        <EditarExtraModal token={token} extra={editandoExtra} onCerrar={() => setEditandoExtra(null)} />
+      )}
+      {confirmacionEliminar && (
+        <ConfirmActionModal
+          titulo={`Eliminar ${confirmacionEliminar.tipo === "producto" ? "producto" : "extra"}`}
+          mensaje={
+            <>
+              ¿Eliminar <strong>"{confirmacionEliminar.item.nombre}"</strong> del catálogo? Esto no se puede
+              deshacer. Si ya se vendió alguna vez, el sistema va a rechazar el borrado para no perder ese historial
+              — en ese caso usá "Desactivar" en su lugar.
+            </>
+          }
+          textoConfirmar="Sí, eliminar"
+          tono="red"
+          cargando={eliminando}
+          error={errorEliminar}
+          onConfirmar={confirmarEliminar}
+          onCancelar={() => setConfirmacionEliminar(null)}
+        />
+      )}
     </div>
   );
 }
@@ -206,17 +350,20 @@ function RecetaModal({
   token,
   producto,
   insumos,
+  onInsumoCreado,
   onCerrar,
 }: {
   token: string | null;
   producto: Producto;
   insumos: Insumo[];
+  onInsumoCreado: (insumo: Insumo) => void;
   onCerrar: () => void;
 }) {
   const [items, setItems] = useState<RecetaItem[] | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modalNuevoInsumo, setModalNuevoInsumo] = useState(false);
 
   useEffect(() => {
     apiFetch<RecetaItem[]>(`/admin/productos/${producto.id}/receta`, token)
@@ -224,13 +371,23 @@ function RecetaModal({
       .catch(() => setError("No se pudo cargar la receta"));
   }, [producto.id, token]);
 
+  function agregarFilaCon(insumo: Insumo) {
+    setItems((prev) => [
+      ...(prev ?? []),
+      { insumoId: insumo.id, insumoNombre: insumo.nombre, unidad: insumo.unidad, cantidadPorUnidad: 0 },
+    ]);
+  }
+
   function agregarFila() {
     const disponible = insumos.find((i) => !items?.some((it) => it.insumoId === i.id));
     if (!disponible) return;
-    setItems((prev) => [
-      ...(prev ?? []),
-      { insumoId: disponible.id, insumoNombre: disponible.nombre, unidad: disponible.unidad, cantidadPorUnidad: 0 },
-    ]);
+    agregarFilaCon(disponible);
+  }
+
+  function onNuevoInsumoCreado(insumo: Insumo) {
+    onInsumoCreado(insumo);
+    agregarFilaCon(insumo);
+    setModalNuevoInsumo(false);
   }
 
   function cambiarInsumo(index: number, insumoId: string) {
@@ -280,11 +437,20 @@ function RecetaModal({
 
       {items && (
         <div className="space-y-2">
+          {items.length > 0 && (
+            <div className="flex items-center gap-2 px-0.5">
+              <span className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Insumo</span>
+              <span className="w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">Cantidad</span>
+              <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-500">Unidad</span>
+              <span className="w-4 shrink-0" />
+            </div>
+          )}
           {items.map((item, index) => (
             <div key={index} className="flex items-center gap-2">
               <select
                 value={item.insumoId}
                 onChange={(e) => cambiarInsumo(index, e.target.value)}
+                title="Insumo"
                 className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-2 py-2 text-sm"
               >
                 {insumos.map((i) => (
@@ -299,10 +465,11 @@ function RecetaModal({
                 step="0.001"
                 value={item.cantidadPorUnidad}
                 onChange={(e) => cambiarCantidad(index, Number(e.target.value))}
+                title="Cantidad por unidad vendida"
                 className="w-24 rounded-lg border border-neutral-300 px-2 py-2 text-sm"
               />
               <span className="w-14 shrink-0 text-xs text-neutral-500">{item.unidad}</span>
-              <button type="button" onClick={() => quitarFila(index)} className="shrink-0 text-red-600">
+              <button type="button" onClick={() => quitarFila(index)} className="shrink-0 text-red-600" title="Quitar de la receta">
                 <IconTrash width={16} height={16} />
               </button>
             </div>
@@ -310,18 +477,30 @@ function RecetaModal({
 
           {items.length === 0 && <p className="text-sm text-neutral-400">Sin insumos en la receta todavía.</p>}
 
-          <button
-            type="button"
-            onClick={agregarFila}
-            disabled={insumos.length === 0 || items.length >= insumos.length}
-            className="flex items-center gap-1.5 text-xs font-medium text-neutral-600 disabled:opacity-40"
-          >
-            <IconPlus width={14} height={14} />
-            Agregar insumo
-          </button>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <button
+              type="button"
+              onClick={agregarFila}
+              disabled={insumos.length === 0 || items.length >= insumos.length}
+              className="flex items-center gap-1.5 text-xs font-medium text-neutral-600 disabled:opacity-40"
+            >
+              <IconPlus width={14} height={14} />
+              Agregar insumo del catálogo
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalNuevoInsumo(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-blue-600"
+            >
+              <IconPlus width={14} height={14} />
+              Registrar insumo nuevo
+            </button>
+          </div>
 
           {insumos.length === 0 && (
-            <p className="text-xs text-amber-600">No hay insumos activos en el catálogo — creá alguno en "Insumos y stock" primero.</p>
+            <p className="text-xs text-amber-600">
+              Todavía no hay insumos en el catálogo — usá "Registrar insumo nuevo" arriba para crear el primero.
+            </p>
           )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -337,6 +516,10 @@ function RecetaModal({
             {guardando ? "Guardando…" : "Guardar receta"}
           </button>
         </div>
+      )}
+
+      {modalNuevoInsumo && (
+        <NuevoInsumoModal token={token} onCerrar={() => setModalNuevoInsumo(false)} onCreado={onNuevoInsumoCreado} />
       )}
     </Modal>
   );
@@ -364,7 +547,75 @@ function ImagenPicker({
   );
 }
 
-function ProductoModal({ token, onCerrar }: { token: string | null; onCerrar: () => void }) {
+/** Selector de categoría: elegir una ya existente de una lista, o escribir
+ * una nueva — en vez de un texto libre siempre, que termina duplicando
+ * categorías por una diferencia de mayúsculas ("Bebidas" vs "bebidas") y las
+ * separa en pestañas distintas en Caja y el menú público. */
+function SelectorCategoria({
+  categoriasExistentes,
+  valorInicial,
+}: {
+  categoriasExistentes: string[];
+  valorInicial?: string;
+}) {
+  const [escribirNueva, setEscribirNueva] = useState(categoriasExistentes.length === 0);
+
+  if (escribirNueva) {
+    return (
+      <div className="flex gap-2">
+        <IconInput
+          icon={IconFolder}
+          name="categoria"
+          placeholder="Nombre de la categoría (ej. Platos, Bebidas)"
+          defaultValue={valorInicial ?? ""}
+          required
+          autoFocus
+          className="flex-1"
+        />
+        {categoriasExistentes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setEscribirNueva(false)}
+            className="shrink-0 rounded-lg bg-neutral-100 px-3 text-xs font-medium text-neutral-600"
+          >
+            Elegir existente
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      name="categoria"
+      defaultValue={valorInicial ?? categoriasExistentes[0]}
+      onChange={(e) => {
+        if (e.target.value === "__nueva__") setEscribirNueva(true);
+      }}
+      className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      required
+    >
+      {categoriasExistentes.map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+      <option value="__nueva__">+ Nueva categoría…</option>
+    </select>
+  );
+}
+
+function ProductoModal({
+  token,
+  categoriasExistentes,
+  categoriaInicial,
+  onCerrar,
+}: {
+  token: string | null;
+  categoriasExistentes: string[];
+  categoriaInicial?: string;
+  onCerrar: () => void;
+}) {
   const [imagenPreview, setImagenPreview] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -391,6 +642,7 @@ function ProductoModal({ token, onCerrar }: { token: string | null; onCerrar: ()
         body: JSON.stringify({
           nombre: form.get("nombre"),
           categoria: form.get("categoria"),
+          descripcion: String(form.get("descripcion") ?? "").trim() || null,
           precio: Number(form.get("precio")),
           requiereParrilla: form.get("requiereParrilla") === "on",
           imagenUrl: imagenPreview ?? undefined,
@@ -409,17 +661,23 @@ function ProductoModal({ token, onCerrar }: { token: string | null; onCerrar: ()
       <form onSubmit={onSubmit} className="space-y-3">
         <ImagenPicker imagenPreview={imagenPreview} onImagenSeleccionada={onImagenSeleccionada} />
 
-        <IconInput icon={IconTag} name="nombre" placeholder="Nombre" required />
-        <IconInput icon={IconFolder} name="categoria" placeholder="Categoría" required />
-        <IconInput
-          icon={IconCoin}
-          name="precio"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Precio"
-          required
-        />
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconTag} name="nombre" placeholder="Ej. Churrasco Sencillo" required />
+        </Campo>
+        <Campo etiqueta="Categoría">
+          <SelectorCategoria categoriasExistentes={categoriasExistentes} valorInicial={categoriaInicial} />
+        </Campo>
+        <Campo etiqueta="Descripción (opcional)">
+          <textarea
+            name="descripcion"
+            rows={2}
+            placeholder="Ej. Viene con ensalada, papa y arroz"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </Campo>
+        <Campo etiqueta="Precio (Bs)">
+          <IconInput icon={IconCoin} name="precio" type="number" step="0.01" min="0" placeholder="0.00" required />
+        </Campo>
         <label className="flex items-center gap-2 text-sm text-neutral-600">
           <input type="checkbox" name="requiereParrilla" defaultChecked /> Requiere parrilla
         </label>
@@ -433,6 +691,99 @@ function ProductoModal({ token, onCerrar }: { token: string | null; onCerrar: ()
         >
           <IconCheck width={16} height={16} />
           {guardando ? "Guardando…" : "Crear producto"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function EditarProductoModal({
+  token,
+  producto,
+  categoriasExistentes,
+  onCerrar,
+}: {
+  token: string | null;
+  producto: Producto;
+  categoriasExistentes: string[];
+  onCerrar: () => void;
+}) {
+  const [imagenPreview, setImagenPreview] = useState<string | null>(producto.imagenUrl);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onImagenSeleccionada(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setImagenPreview(dataUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo procesar la imagen");
+    }
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setGuardando(true);
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    try {
+      await apiFetch(`/admin/productos/${producto.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nombre: form.get("nombre"),
+          categoria: form.get("categoria"),
+          descripcion: String(form.get("descripcion") ?? "").trim() || null,
+          precio: Number(form.get("precio")),
+          requiereParrilla: form.get("requiereParrilla") === "on",
+          imagenUrl: imagenPreview ?? undefined,
+        }),
+      });
+      onCerrar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo actualizar el producto");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Editar "${producto.nombre}"`} onCerrar={onCerrar}>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <ImagenPicker imagenPreview={imagenPreview} onImagenSeleccionada={onImagenSeleccionada} />
+
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconTag} name="nombre" defaultValue={producto.nombre} required />
+        </Campo>
+        <Campo etiqueta="Categoría">
+          <SelectorCategoria categoriasExistentes={categoriasExistentes} valorInicial={producto.categoria} />
+        </Campo>
+        <Campo etiqueta="Descripción (opcional)">
+          <textarea
+            name="descripcion"
+            rows={2}
+            placeholder="Ej. Viene con ensalada, papa y arroz"
+            defaultValue={producto.descripcion ?? ""}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </Campo>
+        <Campo etiqueta="Precio (Bs)">
+          <IconInput icon={IconCoin} name="precio" type="number" step="0.01" min="0" defaultValue={producto.precio} required />
+        </Campo>
+        <label className="flex items-center gap-2 text-sm text-neutral-600">
+          <input type="checkbox" name="requiereParrilla" defaultChecked={producto.requiereParrilla} /> Requiere parrilla
+        </label>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={guardando}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          <IconCheck width={16} height={16} />
+          {guardando ? "Guardando…" : "Guardar cambios"}
         </button>
       </form>
     </Modal>
@@ -482,16 +833,12 @@ function ExtraModal({ token, onCerrar }: { token: string | null; onCerrar: () =>
       <form onSubmit={onSubmit} className="space-y-3">
         <ImagenPicker imagenPreview={imagenPreview} onImagenSeleccionada={onImagenSeleccionada} />
 
-        <IconInput icon={IconTag} name="nombre" placeholder="Nombre (ej. Arroz)" required />
-        <IconInput
-          icon={IconCoin}
-          name="precio"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Precio"
-          required
-        />
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconTag} name="nombre" placeholder="Ej. Arroz" required />
+        </Campo>
+        <Campo etiqueta="Precio (Bs)">
+          <IconInput icon={IconCoin} name="precio" type="number" step="0.01" min="0" placeholder="0.00" required />
+        </Campo>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -502,6 +849,71 @@ function ExtraModal({ token, onCerrar }: { token: string | null; onCerrar: () =>
         >
           <IconCheck width={16} height={16} />
           {guardando ? "Guardando…" : "Crear extra"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function EditarExtraModal({ token, extra, onCerrar }: { token: string | null; extra: Extra; onCerrar: () => void }) {
+  const [imagenPreview, setImagenPreview] = useState<string | null>(extra.imagenUrl);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onImagenSeleccionada(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setImagenPreview(dataUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo procesar la imagen");
+    }
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setGuardando(true);
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    try {
+      await apiFetch(`/admin/extras/${extra.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nombre: form.get("nombre"),
+          precio: Number(form.get("precio")),
+          imagenUrl: imagenPreview ?? undefined,
+        }),
+      });
+      onCerrar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo actualizar el extra");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Editar "${extra.nombre}"`} onCerrar={onCerrar}>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <ImagenPicker imagenPreview={imagenPreview} onImagenSeleccionada={onImagenSeleccionada} />
+
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconTag} name="nombre" defaultValue={extra.nombre} required />
+        </Campo>
+        <Campo etiqueta="Precio (Bs)">
+          <IconInput icon={IconCoin} name="precio" type="number" step="0.01" min="0" defaultValue={extra.precio} required />
+        </Campo>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={guardando}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          <IconCheck width={16} height={16} />
+          {guardando ? "Guardando…" : "Guardar cambios"}
         </button>
       </form>
     </Modal>

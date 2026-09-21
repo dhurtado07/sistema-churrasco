@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Configuracion, Extra, MetodoPago, Pedido, Producto, TipoConsumo } from "shared";
+import type { CajaTurno, Configuracion, Extra, MetodoPago, Pedido, Producto, TipoConsumo } from "shared";
 import { SOCKET_EVENTS } from "shared";
 import { EstacionHeader } from "../components/EstacionHeader";
 import { Modal } from "../components/Modal";
+import { AbrirTurnoModal } from "../components/AbrirTurnoModal";
 import { useAuth } from "../lib/auth";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { apiFetch, ApiError } from "../lib/api";
@@ -10,9 +11,12 @@ import { useSocket } from "../lib/socketContext";
 import { puedeModificarse } from "../lib/pedidosDisplay";
 import { useCarrito } from "../lib/useCarrito";
 import { useConfiguracion } from "../lib/configuracionContext";
+import { useConectividad } from "../lib/conectividadContext";
+import { useMenu } from "../lib/menuContext";
 import { IconInput } from "../components/IconInput";
 import { ImagenProducto } from "../components/ImagenProducto";
 import {
+  IconAlerta,
   IconBag,
   IconCheck,
   IconCoin,
@@ -43,9 +47,9 @@ export function CajaPage() {
   const { token } = useAuth();
   const socket = useSocket();
   const { configuracion } = useConfiguracion();
+  const { online } = useConectividad();
+  const { productos, extras } = useMenu();
 
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [extras, setExtras] = useState<Extra[]>([]);
   const { carrito, setCarrito, agregarProducto, cambiarCantidad, toggleExtra, quitarLinea, total } =
     useCarrito(extras);
   // Nombre/CI del cliente: texto libre, no un registro formal — a Caja no le
@@ -61,6 +65,22 @@ export function CajaPage() {
   const [ultimoTicket, setUltimoTicket] = useState<Pedido | null>(null);
   const [mostrandoQr, setMostrandoQr] = useState(false);
   const [mostrandoConfirmacion, setMostrandoConfirmacion] = useState(false);
+  // undefined = todavía no se sabe (evita mostrar el aviso de "sin turno" un
+  // instante antes de que responda el servidor); null = confirmado que no
+  // hay turno abierto. Sin turno abierto, el servidor rechaza el cobro igual
+  // (ver crearPedido) — esto es solo para no dejar que la cajera arme todo el
+  // pedido y recién se entere del problema al momento de cobrar.
+  const [turnoActivo, setTurnoActivo] = useState<CajaTurno | null | undefined>(undefined);
+  const [modalAbrirTurno, setModalAbrirTurno] = useState(false);
+
+  function cargarTurno() {
+    apiFetch<CajaTurno | null>("/caja/turnos/activo", token).then(setTurnoActivo);
+  }
+
+  useEffect(() => {
+    cargarTurno();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const metodosPagoDisponibles = useMemo(
     () => METODOS_PAGO.filter((m) => configuracion[m.configKey]),
@@ -101,10 +121,6 @@ export function CajaPage() {
   }
 
   useEffect(() => {
-    apiFetch<{ productos: Producto[]; extras: Extra[] }>("/menu", token).then((data) => {
-      setProductos(data.productos);
-      setExtras(data.extras);
-    });
     cargarPendientes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -129,18 +145,6 @@ export function CajaPage() {
       socket.off(SOCKET_EVENTS.PEDIDO_COMPLETADO, onCambio);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket]);
-
-  useEffect(() => {
-    if (!socket) return;
-    const onMenu = (payload: { productos: Producto[]; extras: Extra[] }) => {
-      setProductos(payload.productos.filter((p) => p.activo));
-      setExtras(payload.extras.filter((e) => e.activo));
-    };
-    socket.on(SOCKET_EVENTS.MENU_ACTUALIZADO, onMenu);
-    return () => {
-      socket.off(SOCKET_EVENTS.MENU_ACTUALIZADO, onMenu);
-    };
   }, [socket]);
 
   const categorias = useMemo(() => {
@@ -337,6 +341,9 @@ export function CajaPage() {
                   />
                   <div className="flex flex-1 flex-col justify-center p-3">
                     <p className="line-clamp-2 text-lg font-bold leading-tight text-neutral-900">{producto.nombre}</p>
+                    {producto.descripcion && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-neutral-500">{producto.descripcion}</p>
+                    )}
                     <p className="mt-1 text-lg font-bold text-emerald-700">Bs {formatBs(producto.precio)}</p>
                   </div>
                 </button>
@@ -356,6 +363,24 @@ export function CajaPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-700">
             Pedido actual
           </h2>
+
+          {turnoActivo === null && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              <p className="mb-2 flex items-center gap-1.5 font-medium">
+                <IconAlerta width={16} height={16} />
+                No hay un turno de caja abierto
+              </p>
+              <p className="mb-2 text-xs">No se puede cobrar hasta abrir uno.</p>
+              <button
+                type="button"
+                onClick={() => setModalAbrirTurno(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white"
+              >
+                <IconCoin width={14} height={14} />
+                Abrir turno
+              </button>
+            </div>
+          )}
 
           {carrito.length === 0 && (
             <p className="text-sm text-neutral-400">Toca un plato del menú para agregarlo.</p>
@@ -511,7 +536,11 @@ export function CajaPage() {
             <button
               onClick={() => setMostrandoConfirmacion(true)}
               disabled={
-                carrito.length === 0 || enviando || (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim())
+                carrito.length === 0 ||
+                enviando ||
+                !turnoActivo ||
+                !online ||
+                (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim())
               }
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
             >
@@ -626,6 +655,16 @@ export function CajaPage() {
       )}
 
       {ultimoTicket && <TicketModal pedido={ultimoTicket} onCerrar={() => setUltimoTicket(null)} />}
+      {modalAbrirTurno && (
+        <AbrirTurnoModal
+          token={token}
+          onCerrar={() => setModalAbrirTurno(false)}
+          onListo={() => {
+            setModalAbrirTurno(false);
+            cargarTurno();
+          }}
+        />
+      )}
       {modalPendientesAbierto && (
         <Modal titulo="Pedidos pendientes" onCerrar={() => setModalPendientesAbierto(false)}>
           {errorAnular && <p className="mb-2 text-sm text-red-600">{errorAnular}</p>}

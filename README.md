@@ -54,6 +54,25 @@ problema de reenvío de puertos de la VM de Podman — usar la IP de la VM
 - API: http://localhost:4000
 - Web: http://localhost:5173
 
+## Tests end-to-end
+
+Con el stack de desarrollo ya corriendo (`pnpm db:up` + `pnpm dev`, base
+migrada y sembrada), en otra terminal:
+
+```bash
+cd apps/web
+npx playwright install chromium   # solo la primera vez
+pnpm test:e2e                     # corre toda la suite en terminal
+pnpm test:e2e:ui                  # modo interactivo, para ver qué hace cada test
+```
+
+Cubre los flujos críticos: login (por rol, credenciales inválidas, acceso
+cruzado entre roles), el bloqueo de venta sin turno de caja abierto + una
+venta completa de punta a punta, crear/editar/eliminar un producto, y marcar
+asistencia manual de un empleado. Corren contra la base de **desarrollo**,
+no producción — algunos tests dejan datos de prueba ahí (un pedido real, una
+marca de asistencia); nunca correr esto apuntando a la base de producción.
+
 ### Agente de impresión (opcional en desarrollo)
 
 Corre aparte porque en producción va instalado en la PC de caja, no junto al

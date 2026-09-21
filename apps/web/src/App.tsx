@@ -2,7 +2,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { SocketProvider } from "./lib/socketContext";
 import { ConfiguracionProvider } from "./lib/configuracionContext";
+import { MenuProvider } from "./lib/menuContext";
+import { ConectividadProvider } from "./lib/conectividadContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AvisoSinConexion } from "./components/AvisoSinConexion";
 import { LoginPage } from "./pages/LoginPage";
 import { CajaPage } from "./pages/CajaPage";
 import { CocinaPage } from "./pages/CocinaPage";
@@ -30,7 +33,10 @@ export function App() {
   return (
     <AuthProvider>
       <SocketProvider>
+        <ConectividadProvider>
         <ConfiguracionProvider>
+          <MenuProvider>
+          <AvisoSinConexion />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
@@ -108,7 +114,9 @@ export function App() {
             </Route>
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
+          </MenuProvider>
         </ConfiguracionProvider>
+        </ConectividadProvider>
       </SocketProvider>
     </AuthProvider>
   );

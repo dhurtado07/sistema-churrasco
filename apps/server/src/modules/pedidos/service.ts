@@ -161,6 +161,18 @@ export async function listarAuditoriaPedido(pedidoId: number): Promise<PedidoAud
 
 export class PedidoValidationError extends Error {}
 
+/** Cobrar sin un turno abierto deja esa venta "flotando" fuera de cualquier
+ * cierre de caja (el movimiento se registra con turnoId null y nunca entra
+ * en el efectivoEsperado de ningún turno) — se pierde para la reconciliación
+ * de esa plata. Por eso vender sin turno abierto queda bloqueado acá, no solo
+ * sugerido en la UI. */
+async function asegurarTurnoAbierto() {
+  const turnoAbierto = await prisma.cajaTurno.findFirst({ where: { estado: "ABIERTO" } });
+  if (!turnoAbierto) {
+    throw new PedidoValidationError("No hay un turno de caja abierto — abrilo antes de cobrar.");
+  }
+}
+
 const CONFIG_POR_METODO_PAGO: Record<CrearPedidoInput["metodoPago"], keyof Configuracion> = {
   EFECTIVO: "pagoEfectivoHabilitado",
   TARJETA: "pagoTarjetaHabilitado",
@@ -250,6 +262,7 @@ export async function crearPedido(
   input: CrearPedidoInput,
   cajero: { id: string },
 ): Promise<PedidoDTO> {
+  await asegurarTurnoAbierto();
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
   const { clienteNombre, clienteCarnet } = await resolverCliente(input);
   const config = await obtenerConfiguracion();

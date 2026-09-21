@@ -3,7 +3,12 @@
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    // vite-plugin-pwa trae tipos de Workbox que asumen el lib de un service
+    // worker (ExtendableEvent, etc.) — sin esto y sin skipLibCheck, tsc -b
+    // falla revisando los .d.ts de esa dependencia, no código nuestro.
+    "lib": ["ES2022", "WebWorker"],
+    "skipLibCheck": true
   },
   "include": ["vite.config.ts"]
 }

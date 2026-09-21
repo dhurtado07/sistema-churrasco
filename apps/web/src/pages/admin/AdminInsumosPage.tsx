@@ -4,9 +4,10 @@ import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
+import { Campo } from "../../components/Campo";
 import { IconAlerta, IconCheck, IconCompra, IconInventario, IconPlus, IconTag } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
-import { Badge, FiltroBusqueda, FiltroChip, TablaSeccion } from "../../components/TablaSeccion";
+import { Badge, FilaVacia, FiltroBusqueda, FiltroChip, Paginacion, TablaSeccion, Th } from "../../components/TablaSeccion";
 
 const UNIDADES: UnidadInsumo[] = ["kg", "litro", "unidad", "paquete"];
 
@@ -25,6 +26,8 @@ export function AdminInsumosPage() {
   const [editando, setEditando] = useState<Insumo | null>(null);
   const [ajustando, setAjustando] = useState<Insumo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [tamano, setTamano] = useState(25);
 
   async function cargar() {
     setInsumos(await apiFetch<Insumo[]>("/insumos", token));
@@ -47,6 +50,12 @@ export function AdminInsumosPage() {
 
   const conStockBajo = insumos.filter((i) => i.stockActual > 0 && i.stockActual <= i.stockMinimo).length;
   const agotados = insumos.filter((i) => i.stockActual <= 0).length;
+
+  useEffect(() => {
+    setPagina(1);
+  }, [busqueda, filtroEstado, tamano]);
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / tamano));
+  const paginados = filtrados.slice((pagina - 1) * tamano, pagina * tamano);
 
   return (
     <div className="space-y-4 p-3 sm:p-4">
@@ -107,50 +116,74 @@ export function AdminInsumosPage() {
           </>
         }
       >
-        <ul className="divide-y divide-neutral-100">
-          {filtrados.map((i) => {
-            const estado = estadoStock(i);
-            return (
-              <li key={i.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-neutral-900">
-                    {i.nombre}
-                    {!i.activo && <span className="ml-1.5 text-xs font-normal text-neutral-400">(inactivo)</span>}
-                  </p>
-                  <p className="text-xs text-neutral-500">{i.categoria ?? "Sin categoría"}</p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs font-semibold text-neutral-900">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-neutral-100">
+                <Th>Nombre</Th>
+                <Th>Categoría</Th>
+                <Th align="right">Stock actual</Th>
+                <Th align="right" hint="Debajo de este número, el insumo pasa a 'Stock bajo'.">
+                  Stock mínimo
+                </Th>
+                <Th align="center">Estado</Th>
+                <Th align="right">Acciones</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {paginados.map((i) => {
+                const estado = estadoStock(i);
+                return (
+                  <tr key={i.id}>
+                    <td className="px-3 py-2.5 text-sm font-medium text-neutral-900">
+                      {i.nombre}
+                      {!i.activo && <span className="ml-1.5 text-xs font-normal text-neutral-400">(inactivo)</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-neutral-500">{i.categoria ?? "Sin categoría"}</td>
+                    <td className="px-3 py-2.5 text-right text-sm font-semibold text-neutral-900">
                       {i.stockActual.toFixed(2)} {i.unidad}
-                    </span>
-                    <span className="text-xs text-neutral-400">
-                      (mínimo {i.stockMinimo.toFixed(2)} {i.unidad})
-                    </span>
-                    <Badge tono={estado.tono}>{estado.etiqueta}</Badge>
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    onClick={() => setAjustando(i)}
-                    className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
-                  >
-                    Ajustar
-                  </button>
-                  <button
-                    onClick={() => setEditando(i)}
-                    className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
-                  >
-                    Editar
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-          {filtrados.length === 0 && (
-            <p className="py-6 text-center text-sm text-neutral-400">
-              {insumos.length === 0 ? "No hay insumos registrados todavía." : "Ningún insumo coincide con el filtro."}
-            </p>
-          )}
-        </ul>
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-sm text-neutral-500">
+                      {i.stockMinimo.toFixed(2)} {i.unidad}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <Badge tono={estado.tono}>{estado.etiqueta}</Badge>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setAjustando(i)}
+                          className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+                        >
+                          Ajustar
+                        </button>
+                        <button
+                          onClick={() => setEditando(i)}
+                          className="rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900"
+                        >
+                          Editar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtrados.length === 0 && (
+                <FilaVacia colSpan={6}>
+                  {insumos.length === 0 ? "No hay insumos registrados todavía." : "Ningún insumo coincide con el filtro."}
+                </FilaVacia>
+              )}
+            </tbody>
+          </table>
+          <Paginacion
+            pagina={pagina}
+            totalPaginas={totalPaginas}
+            totalItems={filtrados.length}
+            tamano={tamano}
+            onCambiarPagina={setPagina}
+            onCambiarTamano={setTamano}
+          />
+        </div>
       </TablaSeccion>
 
       {modalNuevo && (
@@ -176,7 +209,18 @@ export function AdminInsumosPage() {
   );
 }
 
-function NuevoInsumoModal({ token, onCerrar, onCreado }: { token: string | null; onCerrar: () => void; onCreado: () => void }) {
+/** Exportado para reusarlo desde la Receta de un producto (Productos):
+ * ahí también hace falta poder registrar un insumo nuevo sin salir del
+ * modal, en vez de mandar al admin a esta página primero. */
+export function NuevoInsumoModal({
+  token,
+  onCerrar,
+  onCreado,
+}: {
+  token: string | null;
+  onCerrar: () => void;
+  onCreado: (insumo: Insumo) => void;
+}) {
   const [unidad, setUnidad] = useState<UnidadInsumo>("kg");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,7 +231,7 @@ function NuevoInsumoModal({ token, onCerrar, onCreado }: { token: string | null;
     setError(null);
     const form = new FormData(event.currentTarget);
     try {
-      await apiFetch("/insumos", token, {
+      const insumo = await apiFetch<Insumo>("/insumos", token, {
         method: "POST",
         body: JSON.stringify({
           nombre: form.get("nombre"),
@@ -197,7 +241,7 @@ function NuevoInsumoModal({ token, onCerrar, onCreado }: { token: string | null;
           stockMinimo: Number(form.get("stockMinimo")) || 0,
         }),
       });
-      onCreado();
+      onCreado(insumo);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo crear el insumo");
     } finally {
@@ -208,10 +252,13 @@ function NuevoInsumoModal({ token, onCerrar, onCreado }: { token: string | null;
   return (
     <Modal titulo="Nuevo insumo" onCerrar={onCerrar}>
       <form onSubmit={onSubmit} className="space-y-3">
-        <IconInput icon={IconInventario} name="nombre" placeholder="Nombre (ej. Carne de res)" required autoFocus />
-        <IconInput icon={IconTag} name="categoria" placeholder="Categoría (ej. carnes, verduras)" />
-        <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-600">Unidad</label>
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconInventario} name="nombre" placeholder="Ej. Carne de res" required autoFocus />
+        </Campo>
+        <Campo etiqueta="Categoría (opcional)">
+          <IconInput icon={IconTag} name="categoria" placeholder="Ej. carnes, verduras" />
+        </Campo>
+        <Campo etiqueta="Unidad">
           <div className="grid grid-cols-4 gap-1.5">
             {UNIDADES.map((u) => (
               <button
@@ -224,10 +271,14 @@ function NuevoInsumoModal({ token, onCerrar, onCreado }: { token: string | null;
               </button>
             ))}
           </div>
-        </div>
+        </Campo>
         <div className="grid grid-cols-2 gap-2">
-          <IconInput icon={IconCompra} name="stockInicial" type="number" min="0" step="0.01" placeholder="Stock inicial" />
-          <IconInput icon={IconAlerta} name="stockMinimo" type="number" min="0" step="0.01" placeholder="Stock mínimo" />
+          <Campo etiqueta="Stock inicial">
+            <IconInput icon={IconCompra} name="stockInicial" type="number" min="0" step="0.01" placeholder="0" />
+          </Campo>
+          <Campo etiqueta="Stock mínimo">
+            <IconInput icon={IconAlerta} name="stockMinimo" type="number" min="0" step="0.01" placeholder="0" />
+          </Campo>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
@@ -283,9 +334,15 @@ function EditarInsumoModal({
   return (
     <Modal titulo={`Editar "${insumo.nombre}"`} onCerrar={onCerrar}>
       <form onSubmit={onSubmit} className="space-y-3">
-        <IconInput icon={IconInventario} name="nombre" defaultValue={insumo.nombre} required />
-        <IconInput icon={IconTag} name="categoria" defaultValue={insumo.categoria ?? ""} placeholder="Categoría" />
-        <IconInput icon={IconAlerta} name="stockMinimo" type="number" min="0" step="0.01" defaultValue={insumo.stockMinimo} />
+        <Campo etiqueta="Nombre">
+          <IconInput icon={IconInventario} name="nombre" defaultValue={insumo.nombre} required />
+        </Campo>
+        <Campo etiqueta="Categoría (opcional)">
+          <IconInput icon={IconTag} name="categoria" defaultValue={insumo.categoria ?? ""} placeholder="Ej. carnes, verduras" />
+        </Campo>
+        <Campo etiqueta="Stock mínimo">
+          <IconInput icon={IconAlerta} name="stockMinimo" type="number" min="0" step="0.01" defaultValue={insumo.stockMinimo} />
+        </Campo>
         <label className="flex items-center gap-2 text-sm text-neutral-700">
           <input type="checkbox" name="activo" defaultChecked={insumo.activo} />
           Activo (aparece como opción en compras y recetas nuevas)
@@ -346,8 +403,12 @@ function AjustarStockModal({
           Stock actual: <span className="font-semibold text-neutral-900">{insumo.stockActual.toFixed(2)} {insumo.unidad}</span>.
           Ingresá cuánto sumar (positivo, ej. conteo físico encontró más) o restar (negativo, ej. merma).
         </p>
-        <IconInput icon={IconCompra} name="delta" type="number" step="0.01" placeholder={`Ej. -2 o 5 (${insumo.unidad})`} required autoFocus />
-        <IconInput icon={IconTag} name="nota" placeholder="Motivo del ajuste (obligatorio)" required />
+        <Campo etiqueta={`Cantidad a sumar o restar (${insumo.unidad})`}>
+          <IconInput icon={IconCompra} name="delta" type="number" step="0.01" placeholder={`Ej. -2 o 5`} required autoFocus />
+        </Campo>
+        <Campo etiqueta="Motivo del ajuste">
+          <IconInput icon={IconTag} name="nota" placeholder="Ej. merma, conteo físico" required />
+        </Campo>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"

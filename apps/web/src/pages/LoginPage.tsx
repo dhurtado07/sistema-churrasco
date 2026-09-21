@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { IconInput } from "../components/IconInput";
 import { IconLock, IconLogin, IconUser } from "../components/icons";
@@ -14,10 +14,18 @@ const RUTA_POR_ROL: Record<string, string> = {
 };
 
 export function LoginPage() {
-  const { login, cargando, error } = useAuth();
+  const { login, cargando, error, usuario } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+
+  // Con la app instalada en el celular, abrir el ícono siempre entra por acá
+  // (ver start_url del manifest) — si ya había una sesión válida (el token
+  // dura 12h), hay que mandar directo a la pantalla de trabajo, no mostrar
+  // el formulario de nuevo.
+  if (usuario) {
+    return <Navigate to={RUTA_POR_ROL[usuario.rol] ?? "/login"} replace />;
+  }
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();

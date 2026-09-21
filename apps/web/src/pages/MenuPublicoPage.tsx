@@ -76,7 +76,10 @@ export function MenuPublicoPage() {
                   />
                   <div className="p-3">
                     <p className="font-medium text-neutral-900">{producto.nombre}</p>
-                    <p className="text-sm font-semibold text-neutral-700">Bs {formatBs(producto.precio)}</p>
+                    {producto.descripcion && (
+                      <p className="mt-0.5 text-xs text-neutral-500">{producto.descripcion}</p>
+                    )}
+                    <p className="mt-1 text-sm font-semibold text-neutral-700">Bs {formatBs(producto.precio)}</p>
                   </div>
                 </div>
               ))}

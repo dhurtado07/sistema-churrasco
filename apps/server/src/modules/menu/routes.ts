@@ -72,6 +72,24 @@ export async function menuRoutes(fastify: FastifyInstance) {
     return producto;
   });
 
+  // Eliminar de verdad (no solo desactivar) solo si el producto nunca se
+  // vendió — si tiene historial en algún pedido, borrarlo rompería esos
+  // pedidos pasados. Para eso ya existe "Desactivar" (lo saca del menú sin
+  // perder el historial); esto es para el caso de "lo cargué mal, nunca se
+  // usó, sacalo directamente".
+  fastify.delete("/admin/productos/:id", { preHandler: [fastify.requireRole("admin")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const usosEnPedidos = await prisma.itemPedido.count({ where: { productoId: id } });
+    if (usosEnPedidos > 0) {
+      return reply
+        .code(409)
+        .send({ error: "Este producto ya se vendió alguna vez — no se puede eliminar sin perder ese historial. Desactivalo en su lugar." });
+    }
+    await prisma.producto.delete({ where: { id } });
+    await broadcastMenu();
+    return reply.code(204).send();
+  });
+
   fastify.post("/admin/extras", { preHandler: [fastify.requireRole("admin")] }, async (request, reply) => {
     const parsed = crearExtraSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -87,6 +105,19 @@ export async function menuRoutes(fastify: FastifyInstance) {
     const extra = await prisma.extra.update({ where: { id }, data: parsed.data });
     await broadcastMenu();
     return extra;
+  });
+
+  fastify.delete("/admin/extras/:id", { preHandler: [fastify.requireRole("admin")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const usosEnPedidos = await prisma.itemPedidoExtra.count({ where: { extraId: id } });
+    if (usosEnPedidos > 0) {
+      return reply
+        .code(409)
+        .send({ error: "Este extra ya se vendió alguna vez — no se puede eliminar sin perder ese historial. Desactivalo en su lugar." });
+    }
+    await prisma.extra.delete({ where: { id } });
+    await broadcastMenu();
+    return reply.code(204).send();
   });
 
   // --- Receta (BOM) de un producto — cuánto de cada insumo consume, para

@@ -16,10 +16,25 @@ html {
    ícono cerca del borde hace que el popup de 240px se salga de la pantalla
    y el navegador agrega scroll horizontal a toda la página. Como estos
    popups son puramente informativos (pointer-events-none, no interactivos),
-   cortarlos en el borde es preferible a que rompan el layout entero. */
-html,
-body {
+   cortarlos en el borde es preferible a que rompan el layout entero.
+   `html` usa "hidden" (es el único scroller vertical real de la página).
+   `body` usa "clip", no "hidden": poner "hidden" en los dos hace que el
+   navegador calcule overflow-y como "auto" en ambos (regla del spec de CSS:
+   si un eje no es "visible", el otro deja de serlo tampoco) — eso crea DOS
+   contenedores de scroll anidados en vez de uno solo. Con dos scrollers,
+   `position: sticky` (el menú del admin) y "volver arriba" al cambiar de
+   página (ver AdminLayout) terminan apuntando al de afuera mientras el
+   contenido real se mueve en el de adentro — en un monitor alto casi no se
+   nota porque rara vez hace falta scrollear, pero en una laptop (menos alto
+   de pantalla) se ve como que el menú "viaja" y las páginas nuevas no
+   arrancan arriba. "clip" recorta el overflow igual que "hidden" pero no
+   convierte al elemento en su propio contenedor de scroll, así que no
+   dispara esa sustitución. */
+html {
   overflow-x: hidden;
+}
+body {
+  overflow-x: clip;
 }
 
 /* Al imprimir un reporte desde /admin, ocultamos la navegación y dejamos

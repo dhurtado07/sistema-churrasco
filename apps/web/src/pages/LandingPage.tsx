@@ -191,6 +191,9 @@ export function LandingPage() {
               )}
               <div className="p-4">
                 <p className="font-bold text-stone-900">{producto.nombre}</p>
+                {producto.descripcion && (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-stone-500">{producto.descripcion}</p>
+                )}
                 <p className="mt-1 text-sm font-semibold text-orange-600">
                   Bs {formatBs(producto.precio)}
                 </p>

@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { marcarAsistenciaSchema } from "shared";
+import { marcarAsistenciaManualSchema, marcarAsistenciaSchema } from "shared";
 import {
   AsistenciaValidationError,
   generarExcelNomina,
   listarHorasTrabajadas,
+  marcarManual,
   marcarPropia,
   obtenerMisHoras,
   obtenerProximaMarca,
@@ -51,6 +52,31 @@ export async function asistenciaRoutes(fastify: FastifyInstance) {
       throw error;
     }
   });
+
+  // Un admin marcando entrada/salida a mano por un empleado (se olvidó de
+  // marcar, no tiene cuenta propia, o hay que cargar un turno pasado).
+  fastify.post(
+    "/asistencia/:empleadoId/marcar-manual",
+    { preHandler: [fastify.requireRole("admin")] },
+    async (request, reply) => {
+      const { empleadoId } = request.params as { empleadoId: string };
+      const parsed = marcarAsistenciaManualSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+      try {
+        const marca = await marcarManual(
+          empleadoId,
+          parsed.data.tipo,
+          parsed.data.momento ? new Date(parsed.data.momento) : undefined,
+          parsed.data.notas,
+        );
+        return reply.code(201).send(marca);
+      } catch (error) {
+        if (error instanceof AsistenciaValidationError) return reply.code(409).send({ error: error.message });
+        throw error;
+      }
+    },
+  );
 
   fastify.get("/asistencia", { preHandler: [fastify.requireRole("admin")] }, async (request) => {
     const { empleadoId, desde, hasta } = request.query as { empleadoId?: string; desde?: string; hasta?: string };

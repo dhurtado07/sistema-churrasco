@@ -5,7 +5,13 @@
  */
 export function resizeImageToDataUrl(
   file: File,
-  maxDim = 480,
+  // 360 alcanza de sobra para donde se muestra: el uso más grande (la
+  // vidriera de la landing) pinta las fotos a ~300px de ancho; Caja, el menú
+  // público y el catálogo del admin las muestran mucho más chicas (~96-128px
+  // o menos). Con 480 se mandaba ~1.5-2x más peso del que jamás se ve, y esa
+  // imagen viaja completa dentro del JSON de /menu cada vez que Caja carga
+  // el catálogo (es un data URI, no un archivo con caché HTTP aparte).
+  maxDim = 360,
   quality = 0.8,
   // PNG (sin pérdida) para imágenes donde la compresión JPEG puede arruinar
   // el resultado — ej. un código QR, donde un artefacto de compresión en un

@@ -57,6 +57,9 @@ const imagenUrlSchema = z
 export const crearProductoSchema = z.object({
   nombre: z.string().min(1),
   categoria: z.string().min(1),
+  // Qué trae el plato (ej. "Viene con ensalada, papa y arroz") — se le
+  // muestra tanto a quien cobra como al cliente en el menú público.
+  descripcion: z.string().min(1).nullable().optional(),
   precio: z.number().positive(),
   requiereParrilla: z.boolean(),
   imagenUrl: imagenUrlSchema.nullable().optional(),
@@ -273,6 +276,16 @@ export const marcarAsistenciaSchema = z.object({
   pin: z.string().optional(),
 });
 
+// Un admin registrando entrada/salida a mano (empleado que se olvidó de
+// marcar, o que no usa el kiosko) — a diferencia de marcarAsistenciaSchema,
+// acá el tipo lo elige el admin (no se infiere de la última marca) y el
+// momento es opcional para poder cargar una marca de un turno pasado.
+export const marcarAsistenciaManualSchema = z.object({
+  tipo: z.enum(["ENTRADA", "SALIDA"]),
+  momento: z.string().datetime().optional(),
+  notas: z.string().min(1).optional(),
+});
+
 export type CrearPedidoInput = z.infer<typeof crearPedidoSchema>;
 export type ActualizarConfiguracionInput = z.infer<typeof actualizarConfiguracionSchema>;
 export type CrearProductoInput = z.infer<typeof crearProductoSchema>;
@@ -292,6 +305,7 @@ export type ActualizarActivoInventarioInput = z.infer<typeof actualizarActivoInv
 export type CrearEmpleadoInput = z.infer<typeof crearEmpleadoSchema>;
 export type ActualizarEmpleadoInput = z.infer<typeof actualizarEmpleadoSchema>;
 export type MarcarAsistenciaInput = z.infer<typeof marcarAsistenciaSchema>;
+export type MarcarAsistenciaManualInput = z.infer<typeof marcarAsistenciaManualSchema>;
 export type CambiarMiPasswordInput = z.infer<typeof cambiarMiPasswordSchema>;
 export type RolEstacion = z.infer<typeof rolEstacionSchema>;
 export type RolEmpleado = z.infer<typeof rolEmpleadoSchema>;

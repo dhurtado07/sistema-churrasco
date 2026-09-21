@@ -1,4 +1,4 @@
-import { useState, type SVGProps } from "react";
+import { useEffect, useState, type SVGProps } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Configuracion } from "shared";
 import { useAuth } from "../../lib/auth";
@@ -113,10 +113,24 @@ export function AdminLayout() {
 
   const paginaActual = NAV.find((item) => (item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)));
 
+  // Sin esto, cambiar de sección (ej. Reportes -> Empleados) mantenía el
+  // scroll donde estaba en la página anterior — en una pantalla de laptop
+  // (menos alto que un monitor de escritorio), el contenido nuevo aparecía
+  // a mitad de camino en vez de arriba, en su principio. React Router no
+  // resetea el scroll solo porque el Outlet cambió de contenido.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [location.pathname]);
+
   return (
     <div className="min-h-dvh bg-neutral-100 sm:flex">
-      {/* Sidebar — desktop/tablet */}
-      <aside className="hidden w-56 shrink-0 flex-col bg-neutral-900 text-white sm:flex">
+      {/* Sidebar — desktop/tablet. sticky + h-dvh + self-start: sin esto el
+          aside se estira para igualar el alto del contenido principal (que
+          suele ser más largo que la pantalla) y termina desplazándose junto
+          con el scroll de la página en vez de quedar fijo — en un monitor
+          grande casi no se notaba, pero en una laptop (menos alto de
+          pantalla) el menú "viaja" hacia arriba y abajo con el contenido. */}
+      <aside className="hidden w-56 shrink-0 flex-col bg-neutral-900 text-white sm:sticky sm:top-0 sm:flex sm:h-dvh sm:self-start">
         <div className="p-4">
           <p className="text-lg font-semibold">Administración</p>
           <p className="text-xs text-neutral-400">{usuario?.nombre}</p>

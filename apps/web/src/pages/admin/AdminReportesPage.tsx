@@ -15,6 +15,7 @@ import {
 } from "../../components/icons";
 import { StatCard } from "../../components/StatCard";
 import { TablaSeccion, FiltroChip, FiltroBusqueda, Th, FilaVacia, Paginacion } from "../../components/TablaSeccion";
+import { Tabs } from "../../components/Tabs";
 import { BarrasAgrupadas, BarrasCategoria, BarrasRanking, Dona, PALETA } from "../../components/Charts";
 
 type Preset = "dia" | "semana" | "mes" | "anio";
@@ -262,14 +263,14 @@ export function AdminReportesPage() {
         </div>
       </div>
 
-      <div className="flex gap-1.5 no-imprimir">
-        <FiltroChip activo={tab === "financiero"} acento="esmeralda" onClick={() => setTab("financiero")}>
-          Financiero
-        </FiltroChip>
-        <FiltroChip activo={tab === "nomina"} acento="rosa" onClick={() => setTab("nomina")}>
-          Nómina / asistencia
-        </FiltroChip>
-      </div>
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { value: "financiero", label: "Financiero" },
+          { value: "nomina", label: "Nómina / asistencia" },
+        ]}
+      />
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

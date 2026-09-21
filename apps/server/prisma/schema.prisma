@@ -82,6 +82,9 @@ model Producto {
   id               String       @id @default(cuid())
   nombre           String
   categoria        String
+  // Qué trae el plato (ej. "Viene con ensalada, papa y arroz") — opcional,
+  // se muestra en Caja y en el menú público debajo del nombre.
+  descripcion      String?
   precio           Float
   activo           Boolean      @default(true)
   requiereParrilla Boolean      @default(true)
@@ -178,6 +181,14 @@ model Pedido {
   parrillaListaEn  DateTime?
   completadoEn     DateTime?
   entregadoEn      DateTime?
+
+  // estado: lo filtran las colas de cocina/parrilla/entrega (listarCola) y el
+  // historial de Pedidos en vivo — se consulta todo el tiempo, en cada
+  // refresco de esas pantallas. completadoEn: lo filtra cada reporte
+  // financiero/de ganancias (rango de fechas). Sin estos índices, ambas
+  // consultas hacían un recorrido secuencial de toda la tabla de pedidos.
+  @@index([estado])
+  @@index([completadoEn])
 }
 
 // Registro de qué cambió y quién lo hizo cada vez que se edita o cancela un
@@ -197,6 +208,8 @@ model PedidoAuditoria {
   totalAntes   Float
   totalDespues Float?
   creadoEn     DateTime @default(now())
+
+  @@index([pedidoId])
 }
 
 model ItemPedido {
@@ -211,6 +224,12 @@ model ItemPedido {
   cantidad         Int
   precioUnitario   Float
   extras           ItemPedidoExtra[]
+
+  // pedidoId: se junta con Pedido en cada lectura de un pedido (todas las
+  // pantallas de estación). productoId: lo cuenta el borrado de un producto
+  // (¿se vendió alguna vez?) y el agrupado por producto de los reportes.
+  @@index([pedidoId])
+  @@index([productoId])
 }
 
 model ItemPedidoExtra {
@@ -221,6 +240,9 @@ model ItemPedidoExtra {
   extraId      String
   nombre       String
   precio       Float
+
+  @@index([itemPedidoId])
+  @@index([extraId])
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +267,10 @@ model CajaTurno {
   notaCierre        String?
   cerradoEn         DateTime?
   movimientos       MovimientoCaja[]
+
+  // Cada venta consulta "¿hay un turno abierto?" antes de cobrar (ver
+  // asegurarTurnoAbierto en pedidos/service.ts) — se ejecuta en cada pedido.
+  @@index([estado])
 }
 
 // Libro de ingresos y egresos: todo movimiento de dinero del negocio, no solo
@@ -272,6 +298,14 @@ model MovimientoCaja {
   anuladoPor        MovimientoCaja? @relation("AnulaMovimiento")
   anulado           Boolean         @default(false)
   creadoEn          DateTime        @default(now())
+
+  // turnoId: lo filtra el cierre de turno (efectivo esperado) y el libro de
+  // caja por turno. creadoEn: todo filtro por rango de fechas (Caja y
+  // dinero, reportes). pedidoId: la búsqueda del ingreso vigente de un
+  // pedido al editarlo/cancelarlo (anularVentaVigente).
+  @@index([turnoId])
+  @@index([creadoEn])
+  @@index([pedidoId])
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +339,9 @@ model Compra {
   items           CompraItem[]
   movimientosCaja MovimientoCaja[]
   createdAt       DateTime         @default(now())
+
+  @@index([proveedorId])
+  @@index([fecha])
 }
 
 model CompraItem {
@@ -324,6 +361,9 @@ model CompraItem {
   // (compatible con compras registradas antes de este catálogo).
   insumoRef      Insumo? @relation(fields: [insumoId], references: [id])
   insumoId       String?
+
+  @@index([compraId])
+  @@index([insumoId])
 }
 
 // Bienes del local (sillas, mesas, televisores, equipo de cocina) — distinto
@@ -376,4 +416,8 @@ model Asistencia {
   momento    DateTime @default(now())
   origen     String   @default("KIOSKO")
   notas      String?
+
+  // Toda consulta de horas trabajadas filtra por empleado y rango de fechas
+  // a la vez (listarHorasTrabajadas, marcarPropia buscando la última marca).
+  @@index([empleadoId, momento])
 }

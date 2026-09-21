@@ -28,6 +28,7 @@ export interface Producto {
   id: string;
   nombre: string;
   categoria: string;
+  descripcion: string | null;
   precio: number;
   activo: boolean;
   requiereParrilla: boolean;

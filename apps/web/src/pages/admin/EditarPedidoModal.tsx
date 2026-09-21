@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Cliente, Extra, Pedido, Producto, TipoConsumo } from "shared";
+import type { Cliente, Pedido, Producto, TipoConsumo } from "shared";
 import { apiFetch, ApiError } from "../../lib/api";
 import { itemsPedidoACarrito, useCarrito } from "../../lib/useCarrito";
+import { useMenu } from "../../lib/menuContext";
 import { formatBs } from "../../lib/format";
 import { IconInput } from "../../components/IconInput";
 import { ClienteModal } from "./AdminClientesPage";
@@ -29,8 +30,7 @@ export function EditarPedidoModal({
   onCerrar: () => void;
   onGuardado: () => void;
 }) {
-  const [productos, setProductos] = useState<Producto[]>([]);
-  const [extras, setExtras] = useState<Extra[]>([]);
+  const { productos, extras } = useMenu();
   const { carrito, agregarProducto, cambiarCantidad, toggleExtra, quitarLinea, total } = useCarrito(
     extras,
     itemsPedidoACarrito(pedido.items),
@@ -52,13 +52,6 @@ export function EditarPedidoModal({
   const [modalClienteAbierto, setModalClienteAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<{ productos: Producto[]; extras: Extra[] }>("/menu", token).then((data) => {
-      setProductos(data.productos);
-      setExtras(data.extras);
-    });
-  }, [token]);
 
   useEffect(() => {
     if (!busquedaCliente.trim()) {

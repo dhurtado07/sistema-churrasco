@@ -46,6 +46,26 @@ export async function marcarPropia(usuarioId: string, notas?: string, pin?: stri
   return toMarcaDTO(marca, empleado.usuario.nombre);
 }
 
+/** Un admin cargando entrada/salida a mano desde /admin/empleados — para un
+ * empleado que se olvidó de marcar en el kiosko o no tiene cuenta propia
+ * para usarlo. Sin las validaciones de marcarPropia (PIN, alternancia
+ * automática entrada/salida): el admin elige el tipo y, opcionalmente, un
+ * momento pasado para cargar un turno que no se registró en su momento. */
+export async function marcarManual(
+  empleadoId: string,
+  tipo: TipoMarcaAsistencia,
+  momento?: Date,
+  notas?: string,
+): Promise<MarcaDTO> {
+  const empleado = await prisma.empleado.findUnique({ where: { id: empleadoId }, include: { usuario: true } });
+  if (!empleado) throw new AsistenciaValidationError("Empleado no encontrado.");
+
+  const marca = await prisma.asistencia.create({
+    data: { empleadoId, tipo, origen: "MANUAL", notas: notas ?? null, ...(momento ? { momento } : {}) },
+  });
+  return toMarcaDTO(marca, empleado.usuario.nombre);
+}
+
 export async function obtenerProximaMarca(usuarioId: string): Promise<{ tipo: TipoMarcaAsistencia; requierePin: boolean }> {
   const empleado = await obtenerEmpleadoPorUsuario(usuarioId);
   const ultima = await prisma.asistencia.findFirst({
