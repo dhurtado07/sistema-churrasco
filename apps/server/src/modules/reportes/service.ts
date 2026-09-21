@@ -25,10 +25,12 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
   const hasta = finDelDia(hastaInput);
 
   const pedidos = await prisma.pedido.findMany({
-    // La venta ya está cerrada apenas cocina y parrilla terminan (COMPLETADO);
-    // que después pase a ENTREGADO es solo el paso logístico de entrega y no
-    // debe hacer que el pedido "desaparezca" de las ganancias del período.
-    where: { estado: { in: ["COMPLETADO", "ENTREGADO"] }, completadoEn: { gte: desde, lte: hasta } },
+    // La venta cuenta desde que se cobra (PAGADO): en ese momento el dinero ya
+    // entró a caja, sin importar si cocina/parrilla/entrega ya terminaron. Si
+    // el cliente cancela, el pedido pasa a CANCELADO y sale solo del reporte.
+    // Por eso se filtra por creadoEn (el instante del cobro) y no por
+    // completadoEn, que es null mientras el pedido sigue en preparación.
+    where: { estado: { in: ["PAGADO", "COMPLETADO", "ENTREGADO"] }, creadoEn: { gte: desde, lte: hasta } },
     include: { items: { include: { extras: true } } },
   });
 
@@ -94,10 +96,10 @@ export async function reporteFinanciero(
       where: { anulado: false, creadoEn: { gte: desde, lte: hasta } },
       orderBy: { creadoEn: "asc" },
     }),
-    // Mismo criterio que reporteGanancias: la venta ya cuenta apenas cocina y
-    // parrilla terminan (COMPLETADO), sin esperar a que Entrega la confirme.
+    // Mismo criterio que reporteGanancias: la venta cuenta desde que se cobra
+    // (PAGADO), por creadoEn, sin esperar a cocina/parrilla/entrega.
     prisma.pedido.findMany({
-      where: { estado: { in: ["COMPLETADO", "ENTREGADO"] }, completadoEn: { gte: desde, lte: hasta } },
+      where: { estado: { in: ["PAGADO", "COMPLETADO", "ENTREGADO"] }, creadoEn: { gte: desde, lte: hasta } },
       include: { items: { include: { extras: true } } },
     }),
   ]);

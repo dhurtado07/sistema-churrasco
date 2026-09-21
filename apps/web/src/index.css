@@ -47,6 +47,16 @@ body {
   margin: 8mm;
 }
 
+/* El ticket de Caja se imprime en un rollo térmico de 58mm. Sin declarar el
+   tamaño de página, el navegador asume una hoja completa (A4/Carta), así que
+   por cada ticket el rollo avanza el largo de una A4 entera: el ticket sale
+   arriba y debajo queda un espaciazo en blanco que desperdicia muchísimo
+   papel. Mientras el ticket está abierto, TicketModal inyecta una @page de
+   "58mm auto" que sobrescribe la de arriba (ver TicketModal.tsx). Se hace por
+   JS y no acá porque una @page con nombre solo-para-el-ticket dejaba la hoja
+   del <html> en su tamaño por defecto y salía una página en blanco antes del
+   ticket; los reportes de Admin se imprimen con el ticket cerrado, en A4. */
+
 /* Al imprimir un reporte desde /admin, ocultamos la navegación y dejamos
    solo el contenido del reporte. */
 @media print {
@@ -86,6 +96,7 @@ body {
   .ticket-imprimible {
     max-width: 100% !important;
     margin: 0 !important;
+    padding: 0 !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }

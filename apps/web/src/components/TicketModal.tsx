@@ -1,18 +1,14 @@
-import { useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, type ComponentType, type SVGProps } from "react";
 import type { Pedido } from "shared";
-import { useAuth } from "../lib/auth";
 import { useConfiguracion } from "../lib/configuracionContext";
-import { apiFetch } from "../lib/api";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { formatoExtra } from "../lib/pedidosDisplay";
-import { IconClose, IconPrint, IconRefresh } from "./icons";
+import { IconClose, IconPrint } from "./icons";
 
 /**
- * Ticket en pantalla, con opción de imprimirlo (por el navegador) o
- * reimprimirlo (reenviarlo a la impresora térmica de la estación vía el
- * agente de impresión). Se usa tanto al cobrar en Caja como desde el
- * historial de Pedidos en Admin — si se actualiza la página antes de
- * imprimir, o si la impresora se atascó, esta es la forma de recuperar el
+ * Ticket en pantalla, con opción de imprimirlo por el navegador. Se usa tanto
+ * al cobrar en Caja como desde el historial de Pedidos en Admin — si se
+ * actualiza la página antes de imprimir, esta es la forma de recuperar el
  * ticket sin que el cliente se quede sin comprobante.
  */
 export function TicketModal({
@@ -24,28 +20,28 @@ export function TicketModal({
 }: {
   pedido: Pedido;
   /** true solo para el ticket recién armado de una venta offline — todavía
-   * no tiene folio real ni se puede reimprimir hasta que se sincronice. */
+   * no tiene folio real hasta que se sincronice. */
   pendienteSync?: boolean;
   textoBotonCerrar?: string;
   iconoBotonCerrar?: ComponentType<SVGProps<SVGSVGElement>>;
   onCerrar: () => void;
 }) {
-  const { token } = useAuth();
   const { configuracion } = useConfiguracion();
-  const [reimprimiendo, setReimprimiendo] = useState(false);
-  const [reimprimirError, setReimprimirError] = useState<string | null>(null);
 
-  async function reimprimir() {
-    setReimprimiendo(true);
-    setReimprimirError(null);
-    try {
-      await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
-    } catch (err) {
-      setReimprimirError(err instanceof Error ? err.message : "No se pudo reimprimir");
-    } finally {
-      setReimprimiendo(false);
-    }
-  }
+  // Mientras el ticket está abierto, la hoja de impresión pasa a ser el rollo
+  // térmico de 58mm de ancho y alto automático (lo justo que ocupa el ticket).
+  // Se sobrescribe la @page POR DEFECTO —en vez de usar una @page con nombre
+  // solo para el ticket— porque al mezclar dos tamaños de página el navegador
+  // metía una hoja en blanco antes del ticket. Los reportes de Admin se
+  // imprimen con el ticket cerrado, así que siguen saliendo en A4.
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = "@page { size: 58mm auto; margin: 3mm; }";
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   return (
     <div className="ticket-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
@@ -93,8 +89,6 @@ export function TicketModal({
           <span>Bs {formatBs(pedido.total)}</span>
         </div>
 
-        {reimprimirError && <p className="mb-2 text-xs text-red-600 no-imprimir">{reimprimirError}</p>}
-
         <div className="no-imprimir flex gap-2">
           <button
             onClick={() => window.print()}
@@ -103,17 +97,6 @@ export function TicketModal({
             <IconPrint width={16} height={16} />
             Imprimir
           </button>
-          {!pendienteSync && (
-            <button
-              onClick={reimprimir}
-              disabled={reimprimiendo}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium disabled:opacity-50"
-              title="Reenvía el ticket a la impresora térmica de la estación"
-            >
-              <IconRefresh width={16} height={16} />
-              {reimprimiendo ? "Enviando…" : "Reimprimir"}
-            </button>
-          )}
           <button
             onClick={onCerrar}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-3 text-sm font-medium text-white"

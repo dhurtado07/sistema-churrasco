@@ -191,11 +191,12 @@ model Pedido {
 
   // estado: lo filtran las colas de cocina/parrilla/entrega (listarCola) y el
   // historial de Pedidos en vivo — se consulta todo el tiempo, en cada
-  // refresco de esas pantallas. completadoEn: lo filtra cada reporte
-  // financiero/de ganancias (rango de fechas). Sin estos índices, ambas
-  // consultas hacían un recorrido secuencial de toda la tabla de pedidos.
+  // refresco de esas pantallas. creadoEn: lo filtra cada reporte
+  // financiero/de ganancias (rango de fechas, la venta cuenta desde el cobro).
+  // Sin estos índices, ambas consultas hacían un recorrido secuencial de toda
+  // la tabla de pedidos.
   @@index([estado])
-  @@index([completadoEn])
+  @@index([creadoEn])
 }
 
 // Registro de qué cambió y quién lo hizo cada vez que se edita o cancela un
