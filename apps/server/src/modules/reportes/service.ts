@@ -41,7 +41,7 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
 
     for (const item of pedido.items) {
-      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio, 0);
+      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio * extra.cantidad, 0);
       const itemTotal = (item.precioUnitario + extrasTotal) * item.cantidad;
       const actual = porProductoMap.get(item.productoId) ?? {
         productoId: item.productoId,
@@ -136,7 +136,7 @@ export async function reporteFinanciero(
   for (const pedido of pedidos) {
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
     for (const item of pedido.items) {
-      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio, 0);
+      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio * extra.cantidad, 0);
       const itemTotal = (item.precioUnitario + extrasTotal) * item.cantidad;
       const actual = porProductoMap.get(item.productoId) ?? {
         productoId: item.productoId,

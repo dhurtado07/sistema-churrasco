@@ -13,6 +13,7 @@ import { HistorialPedidoModal } from "./HistorialPedidoModal";
 import {
   ESTADO_BADGE,
   ESTADO_LABEL,
+  formatoExtra,
   puedeModificarse,
   TABS_PEDIDOS,
   type FiltroPedidos as Filtro,
@@ -171,7 +172,7 @@ export function AdminPedidosPage() {
                 <li key={item.id}>
                   {item.cantidad}x {item.nombreProducto}
                   {item.extras.length > 0 && (
-                    <span className="text-neutral-400"> ({item.extras.map((e) => e.nombre).join(", ")})</span>
+                    <span className="text-neutral-400"> ({item.extras.map(formatoExtra).join(", ")})</span>
                   )}
                 </li>
               ))}

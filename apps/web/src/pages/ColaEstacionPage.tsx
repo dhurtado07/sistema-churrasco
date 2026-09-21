@@ -10,6 +10,7 @@ import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
 import { ImagenProducto } from "../components/ImagenProducto";
 import { formatoFechaHoraBO } from "../lib/format";
 import { useConfiguracion } from "../lib/configuracionContext";
+import { formatoExtra } from "../lib/pedidosDisplay";
 
 interface Props {
   estacion: "cocina" | "parrilla";
@@ -165,7 +166,7 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
                         </p>
                         {item.extras.length > 0 && (
                           <p className="mt-0.5 text-base text-neutral-500">
-                            {item.extras.map((extra) => extra.nombre).join(", ")}
+                            {item.extras.map(formatoExtra).join(", ")}
                           </p>
                         )}
                       </div>

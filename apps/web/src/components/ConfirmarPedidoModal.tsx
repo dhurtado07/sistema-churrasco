@@ -3,6 +3,7 @@ import type { Pedido } from "shared";
 import { Modal } from "./Modal";
 import { IconAlerta } from "./icons";
 import { iconoComida } from "./ImagenProducto";
+import { formatoExtra } from "../lib/pedidosDisplay";
 
 /**
  * Popup de confirmación en el medio de la pantalla, con el detalle del
@@ -66,7 +67,7 @@ export function ConfirmarPedidoModal({
                   {item.cantidad}x {item.nombreProducto}
                 </span>
                 {item.extras.length > 0 && (
-                  <span className="text-neutral-500"> ({item.extras.map((e) => e.nombre).join(", ")})</span>
+                  <span className="text-neutral-500"> ({item.extras.map(formatoExtra).join(", ")})</span>
                 )}
               </span>
             </li>

@@ -31,7 +31,7 @@ export function EditarPedidoModal({
   onGuardado: () => void;
 }) {
   const { productos, extras } = useMenu();
-  const { carrito, agregarProducto, cambiarCantidad, toggleExtra, quitarLinea, total } = useCarrito(
+  const { carrito, agregarProducto, cambiarCantidad, cambiarCantidadExtra, quitarLinea, total } = useCarrito(
     extras,
     itemsPedidoACarrito(pedido.items),
   );
@@ -98,7 +98,7 @@ export function EditarPedidoModal({
           items: carrito.map((linea) => ({
             productoId: linea.productoId,
             cantidad: linea.cantidad,
-            extraIds: linea.extraIds,
+            extras: linea.extras,
           })),
         }),
       });
@@ -180,24 +180,57 @@ export function EditarPedidoModal({
                       <IconPlus width={14} height={14} />
                     </button>
                     <span className="ml-auto text-xs text-neutral-500">
-                      Bs {formatBs(linea.precioUnitario * linea.cantidad)}
+                      Bs{" "}
+                      {formatBs(
+                        (linea.precioUnitario +
+                          linea.extras.reduce((s, sel) => {
+                            const extra = extras.find((e) => e.id === sel.extraId);
+                            return s + (extra?.precio ?? 0) * sel.cantidad;
+                          }, 0)) *
+                          linea.cantidad,
+                      )}
                     </span>
                   </div>
                   {extras.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {extras.map((extra) => (
-                        <label
-                          key={extra.id}
-                          className="flex items-center gap-1 rounded-full border border-neutral-200 px-2 py-0.5 text-[11px]"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={linea.extraIds.includes(extra.id)}
-                            onChange={() => toggleExtra(linea.lineaId, extra.id)}
-                          />
-                          {extra.nombre}
-                        </label>
-                      ))}
+                      {extras.map((extra) => {
+                        const seleccion = linea.extras.find((e) => e.extraId === extra.id);
+                        if (!seleccion) {
+                          return (
+                            <button
+                              key={extra.id}
+                              type="button"
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, extra.id, 1)}
+                              className="flex items-center gap-1 rounded-full border border-neutral-200 px-2 py-0.5 text-[11px]"
+                            >
+                              <IconPlus width={10} height={10} />
+                              {extra.nombre}
+                            </button>
+                          );
+                        }
+                        return (
+                          <span
+                            key={extra.id}
+                            className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, extra.id, -1)}
+                              className="flex h-4 w-4 items-center justify-center rounded-full bg-white"
+                            >
+                              <IconMinus width={9} height={9} />
+                            </button>
+                            {seleccion.cantidad}x {extra.nombre}
+                            <button
+                              type="button"
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, extra.id, 1)}
+                              className="flex h-4 w-4 items-center justify-center rounded-full bg-white"
+                            >
+                              <IconPlus width={9} height={9} />
+                            </button>
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </li>

@@ -84,10 +84,15 @@ export const crearClienteSchema = z.object({
   carnet: z.string().min(1).optional(),
 });
 
+export const extraSeleccionadoInputSchema = z.object({
+  extraId: z.string().min(1),
+  cantidad: z.number().int().positive(),
+});
+
 export const itemPedidoInputSchema = z.object({
   productoId: z.string().min(1),
   cantidad: z.number().int().positive(),
-  extraIds: z.array(z.string()).default([]),
+  extras: z.array(extraSeleccionadoInputSchema).default([]),
 });
 
 // La mesa es obligatoria para consumo en local SOLO si el negocio la usa

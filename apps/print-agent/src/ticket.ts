@@ -52,7 +52,8 @@ export function construirTicketEscPos(pedido: Pedido, negocio: NegocioInfo = NEG
   for (const item of pedido.items) {
     builder.line(lineaDosColumnas(`${item.cantidad}x ${item.nombreProducto}`, formatoMoneda(item.precioUnitario * item.cantidad)));
     for (const extra of item.extras) {
-      builder.line(lineaDosColumnas(`  + ${extra.nombre}`, formatoMoneda(extra.precio)));
+      const etiqueta = extra.cantidad > 1 ? `  + ${extra.cantidad}x ${extra.nombre}` : `  + ${extra.nombre}`;
+      builder.line(lineaDosColumnas(etiqueta, formatoMoneda(extra.precio * extra.cantidad)));
     }
   }
 
@@ -85,7 +86,8 @@ export function construirTicketTexto(pedido: Pedido, negocio: NegocioInfo = NEGO
   for (const item of pedido.items) {
     lineas.push(lineaDosColumnas(`${item.cantidad}x ${item.nombreProducto}`, formatoMoneda(item.precioUnitario * item.cantidad)));
     for (const extra of item.extras) {
-      lineas.push(lineaDosColumnas(`  + ${extra.nombre}`, formatoMoneda(extra.precio)));
+      const etiqueta = extra.cantidad > 1 ? `  + ${extra.cantidad}x ${extra.nombre}` : `  + ${extra.nombre}`;
+      lineas.push(lineaDosColumnas(etiqueta, formatoMoneda(extra.precio * extra.cantidad)));
     }
   }
   lineas.push("-".repeat(ANCHO));

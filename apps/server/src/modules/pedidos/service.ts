@@ -103,6 +103,7 @@ export function toPedidoDTO(pedido: PedidoConRelaciones): PedidoDTO {
         extraId: extra.extraId,
         nombre: extra.nombre,
         precio: extra.precio,
+        cantidad: extra.cantidad,
       })),
     })),
   };
@@ -116,7 +117,7 @@ function snapshotItems(pedido: PedidoConRelaciones): ItemAuditado[] {
     nombreProducto: item.nombreProducto,
     cantidad: item.cantidad,
     precioUnitario: item.precioUnitario,
-    extras: item.extras.map((e) => e.nombre),
+    extras: item.extras.map((e) => (e.cantidad > 1 ? `${e.cantidad}x ${e.nombre}` : e.nombre)),
   }));
 }
 
@@ -213,7 +214,7 @@ function asegurarMesaValida(config: Configuracion, input: Pick<CrearPedidoInput,
 
 async function construirItems(items: CrearPedidoInput["items"]) {
   const productoIds = items.map((item) => item.productoId);
-  const extraIds = [...new Set(items.flatMap((item) => item.extraIds))];
+  const extraIds = [...new Set(items.flatMap((item) => item.extras.map((e) => e.extraId)))];
 
   const [productos, extras] = await Promise.all([
     prisma.producto.findMany({ where: { id: { in: productoIds }, activo: true } }),
@@ -227,9 +228,9 @@ async function construirItems(items: CrearPedidoInput["items"]) {
     if (!productoMap.has(item.productoId)) {
       throw new PedidoValidationError(`Producto ${item.productoId} no existe o no está disponible`);
     }
-    for (const extraId of item.extraIds) {
-      if (!extraMap.has(extraId)) {
-        throw new PedidoValidationError(`Extra ${extraId} no existe o no está disponible`);
+    for (const seleccion of item.extras) {
+      if (!extraMap.has(seleccion.extraId)) {
+        throw new PedidoValidationError(`Extra ${seleccion.extraId} no existe o no está disponible`);
       }
     }
   }
@@ -237,10 +238,10 @@ async function construirItems(items: CrearPedidoInput["items"]) {
   let total = 0;
   const itemsData = items.map((item) => {
     const producto = productoMap.get(item.productoId)!;
-    const extrasData = item.extraIds.map((extraId) => {
-      const extra = extraMap.get(extraId)!;
-      total += extra.precio * item.cantidad;
-      return { extraId: extra.id, nombre: extra.nombre, precio: extra.precio };
+    const extrasData = item.extras.map((seleccion) => {
+      const extra = extraMap.get(seleccion.extraId)!;
+      total += extra.precio * seleccion.cantidad * item.cantidad;
+      return { extraId: extra.id, nombre: extra.nombre, precio: extra.precio, cantidad: seleccion.cantidad };
     });
     total += producto.precio * item.cantidad;
     return {

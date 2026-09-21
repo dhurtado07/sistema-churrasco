@@ -10,6 +10,7 @@ import { IconAlerta, IconBag, IconCheck, IconIdCard, IconMesa, IconUser } from "
 import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
 import { ImagenProducto } from "../components/ImagenProducto";
 import { formatoFechaHoraBO } from "../lib/format";
+import { formatoExtra } from "../lib/pedidosDisplay";
 
 function listoParaEntregar(pedido: Pedido): boolean {
   return pedido.estado === "COMPLETADO";
@@ -163,7 +164,7 @@ export function EntregaPage() {
                         </p>
                         {item.extras.length > 0 && (
                           <p className="text-sm text-neutral-500">
-                            {item.extras.map((extra) => extra.nombre).join(", ")}
+                            {item.extras.map(formatoExtra).join(", ")}
                           </p>
                         )}
                       </div>

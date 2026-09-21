@@ -8,7 +8,7 @@ import { useAuth } from "../lib/auth";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { apiFetch, ApiError } from "../lib/api";
 import { useSocket } from "../lib/socketContext";
-import { puedeModificarse } from "../lib/pedidosDisplay";
+import { formatoExtra, puedeModificarse } from "../lib/pedidosDisplay";
 import { useCarrito, type LineaCarrito } from "../lib/useCarrito";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { useConectividad } from "../lib/conectividadContext";
@@ -53,7 +53,7 @@ export function CajaPage() {
   const { productos, extras } = useMenu();
   const { pendientes: ventasOfflinePendientes, encolarVenta, descartarVenta } = useVentasOffline();
 
-  const { carrito, setCarrito, agregarProducto, cambiarCantidad, toggleExtra, quitarLinea, total } =
+  const { carrito, setCarrito, agregarProducto, cambiarCantidad, cambiarCantidadExtra, quitarLinea, total } =
     useCarrito(extras);
   // Nombre/CI del cliente: texto libre, no un registro formal — a Caja no le
   // interesa "registrar" a nadie, solo tener algo para llamarlo cuando esté
@@ -197,14 +197,16 @@ export function CajaPage() {
   // Un extra siempre va pegado a un plato (ItemPedidoExtra cuelga de un
   // ItemPedido en la base) — como ahora se tocan desde su propia pestaña y no
   // desde la línea del carrito, se le suma al último plato que se agregó (el
-  // que la cajera está armando en este momento).
+  // que la cajera está armando en este momento). Cada toque suma una unidad
+  // más (un cliente puede pedir 2 o 3 porciones del mismo extra) — para sacar
+  // o bajar cantidad se usa el +/- que aparece en el carrito, no este botón.
   function agregarExtraAUltimaLinea(extra: Extra) {
     const ultimaLinea = carrito[carrito.length - 1];
     if (!ultimaLinea) {
       setError("Agregá un plato antes de sumarle un extra.");
       return;
     }
-    toggleExtra(ultimaLinea.lineaId, extra.id);
+    cambiarCantidadExtra(ultimaLinea.lineaId, extra.id, 1);
   }
 
   /** Se llama al confirmar en el modal de resumen ("Sí, cobrar") — recién ahí
@@ -240,10 +242,12 @@ export function CajaPage() {
         requiereParrilla: linea.requiereParrilla,
         cantidad: linea.cantidad,
         precioUnitario: linea.precioUnitario,
-        extras: linea.extraIds
-          .map((extraId) => extras.find((e) => e.id === extraId))
-          .filter((e): e is Extra => !!e)
-          .map((e) => ({ extraId: e.id, nombre: e.nombre, precio: e.precio })),
+        extras: linea.extras
+          .map((sel) => {
+            const extra = extras.find((e) => e.id === sel.extraId);
+            return extra ? { extraId: extra.id, nombre: extra.nombre, precio: extra.precio, cantidad: sel.cantidad } : null;
+          })
+          .filter((e): e is NonNullable<typeof e> => !!e),
       })),
       total,
       estado: "PAGADO",
@@ -278,7 +282,7 @@ export function CajaPage() {
       items: carrito.map((linea) => ({
         productoId: linea.productoId,
         cantidad: linea.cantidad,
-        extraIds: linea.extraIds,
+        extras: linea.extras,
       })),
     };
 
@@ -393,26 +397,30 @@ export function CajaPage() {
               <div className="grid grid-cols-2 gap-2 auto-rows-fr sm:grid-cols-3 md:grid-cols-4">
                 {extras.map((extra) => {
                 const ultimaLinea = carrito[carrito.length - 1];
-                const yaAgregado = !!ultimaLinea?.extraIds.includes(extra.id);
+                const cantidadAgregada = ultimaLinea?.extras.find((e) => e.extraId === extra.id)?.cantidad ?? 0;
                 return (
                   <button
                     key={extra.id}
                     onClick={() => agregarExtraAUltimaLinea(extra)}
                     title={
                       ultimaLinea
-                        ? `${yaAgregado ? "Quitar de" : "Agregar a"} "${ultimaLinea.nombre}"`
+                        ? `Agregar otra unidad a "${ultimaLinea.nombre}"`
                         : "Agregá un plato primero"
                     }
                     className={`relative flex h-full flex-col overflow-hidden rounded-xl border bg-white text-left shadow-sm active:scale-[0.98] ${
-                      yaAgregado ? "border-emerald-500 ring-2 ring-emerald-200" : "border-neutral-200"
+                      cantidadAgregada > 0 ? "border-emerald-500 ring-2 ring-emerald-200" : "border-neutral-200"
                     }`}
                   >
                     <span
-                      className={`absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full text-white shadow ${
-                        yaAgregado ? "bg-emerald-600" : "bg-neutral-900"
+                      className={`absolute right-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-white shadow ${
+                        cantidadAgregada > 0 ? "bg-emerald-600" : "bg-neutral-900"
                       }`}
                     >
-                      {yaAgregado ? <IconCheck width={14} height={14} /> : <IconPlus width={14} height={14} />}
+                      {cantidadAgregada > 0 ? (
+                        <span className="text-xs font-bold">{cantidadAgregada}x</span>
+                      ) : (
+                        <IconPlus width={14} height={14} />
+                      )}
                     </span>
                     <ImagenProducto imagenUrl={extra.imagenUrl} nombre={extra.nombre} className="h-24 w-full shrink-0" />
                     <div className="flex flex-1 flex-col justify-center p-3">
@@ -522,30 +530,47 @@ export function CajaPage() {
                   </span>
                 </div>
 
-                {linea.extraIds.length > 0 && (
+                {linea.extras.length > 0 && (
                   // Mismo look que un ítem principal (nombre igual de grande,
-                  // precio igual de grande, mismo botón Quitar) — la única
-                  // diferencia es la etiqueta "(extra)" para que la cajera
-                  // distinga de un vistazo que va pegado al plato de arriba.
+                  // +/- de cantidad igual que el plato) — la única diferencia
+                  // es la etiqueta "(extra)" para que la cajera distinga de
+                  // un vistazo que va pegado al plato de arriba.
                   <ul className="mt-2 space-y-2 border-t border-dashed border-neutral-300 pt-2">
-                    {linea.extraIds.map((extraId) => {
-                      const extra = extras.find((e) => e.id === extraId);
+                    {linea.extras.map((sel) => {
+                      const extra = extras.find((e) => e.id === sel.extraId);
                       if (!extra) return null;
                       return (
-                        <li key={extraId}>
+                        <li key={sel.extraId}>
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-medium text-neutral-900">
                               {extra.nombre} <span className="font-normal text-neutral-500">(extra)</span>
                             </p>
                             <button
-                              onClick={() => toggleExtra(linea.lineaId, extraId)}
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, sel.extraId, -sel.cantidad)}
                               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-red-600 active:bg-red-50"
                             >
                               <IconTrash width={18} height={18} />
                               Quitar
                             </button>
                           </div>
-                          <p className="mt-1 text-right text-lg font-bold text-neutral-900">Bs {formatBs(extra.precio)}</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <button
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, sel.extraId, -1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-200"
+                            >
+                              <IconMinus width={16} height={16} />
+                            </button>
+                            <span className="w-6 text-center">{sel.cantidad}</span>
+                            <button
+                              onClick={() => cambiarCantidadExtra(linea.lineaId, sel.extraId, 1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-200"
+                            >
+                              <IconPlus width={16} height={16} />
+                            </button>
+                            <span className="ml-auto text-lg font-bold text-neutral-900">
+                              Bs {formatBs(extra.precio * sel.cantidad)}
+                            </span>
+                          </div>
                         </li>
                       );
                     })}
@@ -695,13 +720,16 @@ export function CajaPage() {
                     Bs {formatBs(linea.precioUnitario * linea.cantidad)}
                   </span>
                 </div>
-                {linea.extraIds.map((extraId) => {
-                  const extra = extras.find((e) => e.id === extraId);
+                {linea.extras.map((sel) => {
+                  const extra = extras.find((e) => e.id === sel.extraId);
                   if (!extra) return null;
                   return (
-                    <div key={extraId} className="flex justify-between pl-4 text-xs text-neutral-500">
-                      <span>+ {extra.nombre} (extra)</span>
-                      <span>Bs {formatBs(extra.precio)}</span>
+                    <div key={sel.extraId} className="flex justify-between pl-4 text-xs text-neutral-500">
+                      <span>
+                        + {sel.cantidad > 1 ? `${sel.cantidad}x ` : ""}
+                        {extra.nombre} (extra)
+                      </span>
+                      <span>Bs {formatBs(extra.precio * sel.cantidad)}</span>
                     </div>
                   );
                 })}
@@ -967,8 +995,8 @@ function TicketModal({
               </div>
               {item.extras.map((extra) => (
                 <div key={extra.extraId} className="flex justify-between pl-4 text-xs text-neutral-500">
-                  <span>+ {extra.nombre}</span>
-                  <span>Bs {formatBs(extra.precio)}</span>
+                  <span>+ {formatoExtra(extra)}</span>
+                  <span>Bs {formatBs(extra.precio * extra.cantidad)}</span>
                 </div>
               ))}
             </li>

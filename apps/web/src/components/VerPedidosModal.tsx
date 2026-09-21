@@ -9,7 +9,7 @@ import { useSocket } from "../lib/socketContext";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { apiFetch } from "../lib/api";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
-import { ESTADO_BADGE, ESTADO_LABEL, TABS_PEDIDOS, type FiltroPedidos } from "../lib/pedidosDisplay";
+import { ESTADO_BADGE, ESTADO_LABEL, formatoExtra, TABS_PEDIDOS, type FiltroPedidos } from "../lib/pedidosDisplay";
 
 /**
  * Botón + modal de "Ver pedidos", disponible en todas las estaciones (Caja,
@@ -141,7 +141,7 @@ export function VerPedidosModal() {
                     <li key={item.id}>
                       {item.cantidad}x {item.nombreProducto}
                       {item.extras.length > 0 && (
-                        <span className="text-neutral-400"> ({item.extras.map((e) => e.nombre).join(", ")})</span>
+                        <span className="text-neutral-400"> ({item.extras.map(formatoExtra).join(", ")})</span>
                       )}
                     </li>
                   ))}

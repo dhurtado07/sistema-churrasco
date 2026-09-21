@@ -247,6 +247,10 @@ model ItemPedidoExtra {
   extraId      String
   nombre       String
   precio       Float
+  // Cuántas unidades de este extra (ej. 2 porciones de arroz) — antes un
+  // extra era todo o nada por plato, así que un cliente que quería 2
+  // porciones se quedaba sin poder pedirlas.
+  cantidad     Int        @default(1)
 
   @@index([itemPedidoId])
   @@index([extraId])

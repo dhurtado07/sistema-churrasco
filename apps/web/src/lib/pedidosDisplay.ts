@@ -1,4 +1,11 @@
-import type { Pedido } from "shared";
+import type { ExtraSeleccionado, Pedido } from "shared";
+
+/** "Chorizo" si es una sola unidad, "2x Chorizo" si son varias — para que
+ * cocina/parrilla sepan cuántas porciones preparar de verdad, no solo que
+ * el plato "lleva" ese extra. */
+export function formatoExtra(extra: Pick<ExtraSeleccionado, "nombre" | "cantidad">): string {
+  return extra.cantidad > 1 ? `${extra.cantidad}x ${extra.nombre}` : extra.nombre;
+}
 
 export type FiltroPedidos = "pendientes" | "listos" | "atendidos" | "cancelados";
 

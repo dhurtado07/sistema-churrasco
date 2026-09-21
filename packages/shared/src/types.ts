@@ -54,6 +54,7 @@ export interface ExtraSeleccionado {
   extraId: string;
   nombre: string;
   precio: number;
+  cantidad: number;
 }
 
 export interface ItemPedido {
