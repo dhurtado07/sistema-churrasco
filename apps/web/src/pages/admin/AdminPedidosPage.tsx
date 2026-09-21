@@ -12,6 +12,7 @@ import { EditarPedidoModal } from "./EditarPedidoModal";
 import { HistorialPedidoModal } from "./HistorialPedidoModal";
 import { ConfirmarPedidoModal } from "../../components/ConfirmarPedidoModal";
 import { TicketModal } from "../../components/TicketModal";
+import { FiltroChip } from "../../components/TablaSeccion";
 import {
   ESTADO_BADGE,
   ESTADO_LABEL,
@@ -22,6 +23,25 @@ import {
 } from "../../lib/pedidosDisplay";
 
 const TABS = TABS_PEDIDOS;
+
+function hoyComoInputDate(): string {
+  // "YYYY-MM-DD" en la fecha local del navegador — lo que espera un
+  // <input type="date">.
+  const hoy = new Date();
+  const mes = String(hoy.getMonth() + 1).padStart(2, "0");
+  const dia = String(hoy.getDate()).padStart(2, "0");
+  return `${hoy.getFullYear()}-${mes}-${dia}`;
+}
+
+/** new Date("YYYY-MM-DD") lo interpreta como medianoche UTC, no medianoche
+ * local — con Bolivia en UTC-4 eso corre el día entero para atrás. Partiendo
+ * los componentes a mano y usando el constructor (año, mes, día), Date SÍ
+ * los toma como hora local, sin ese corrimiento (mismo criterio que ya usa
+ * Reportes). */
+function fechaLocalDesdeInput(valor: string): Date {
+  const [anio, mes, dia] = valor.split("-").map(Number);
+  return new Date(anio, mes - 1, dia);
+}
 
 export function AdminPedidosPage() {
   const { token } = useAuth();
@@ -36,6 +56,12 @@ export function AdminPedidosPage() {
   const [pedidoTicket, setPedidoTicket] = useState<Pedido | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
+  // Por defecto se ve solo lo de hoy — un local que ya factura seguido
+  // acumula demasiados pedidos como para mostrarlos todos juntos. "Rango
+  // personalizado" lo saca de "hoy" para mirar cualquier otro día o período.
+  const [rangoPersonalizado, setRangoPersonalizado] = useState(false);
+  const [desdeManual, setDesdeManual] = useState(hoyComoInputDate());
+  const [hastaManual, setHastaManual] = useState(hoyComoInputDate());
   // React (StrictMode) puede disparar el efecto de carga dos veces, y un
   // cambio rápido de pestaña puede dejar una petición vieja todavía en
   // vuelo. Si esa respuesta vieja llega después de la de la pestaña actual,
@@ -48,7 +74,12 @@ export function AdminPedidosPage() {
     const tabAlPedir = tab;
     setCargando(true);
     try {
-      const data = await apiFetch<Pedido[]>(`/pedidos?estado=${tabAlPedir}`, token);
+      const desde = fechaLocalDesdeInput(rangoPersonalizado ? desdeManual : hoyComoInputDate());
+      const hasta = fechaLocalDesdeInput(rangoPersonalizado ? hastaManual : hoyComoInputDate());
+      const data = await apiFetch<Pedido[]>(
+        `/pedidos?estado=${tabAlPedir}&desde=${desde.toISOString()}&hasta=${hasta.toISOString()}`,
+        token,
+      );
       if (tabRef.current === tabAlPedir) setPedidos(data);
     } finally {
       if (tabRef.current === tabAlPedir) setCargando(false);
@@ -58,7 +89,7 @@ export function AdminPedidosPage() {
   useEffect(() => {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, token]);
+  }, [tab, token, rangoPersonalizado, desdeManual, hastaManual]);
 
   useEffect(() => {
     if (!socket) return;
@@ -83,7 +114,7 @@ export function AdminPedidosPage() {
       socket.off(SOCKET_EVENTS.PEDIDO_ENTREGADO, onCambio);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, tab]);
+  }, [socket, tab, rangoPersonalizado, desdeManual, hastaManual]);
 
   const pedidosFiltrados = pedidos.filter((pedido) => {
     const termino = busqueda.trim().toLowerCase();
@@ -108,6 +139,10 @@ export function AdminPedidosPage() {
 
   return (
     <div className="space-y-4 p-3 sm:p-4">
+      {/* Todo lo de acá adentro se oculta al imprimir un ticket puntual (ver
+          TicketModal) — si no, además del ticket salía toda esta lista de
+          pedidos detrás. */}
+      <div className="no-imprimir space-y-4">
       <h1 className="text-lg font-semibold text-neutral-900">Pedidos</h1>
 
       <div className="flex gap-2 overflow-x-auto">
@@ -122,6 +157,33 @@ export function AdminPedidosPage() {
             {t.label}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FiltroChip activo={!rangoPersonalizado} acento="azul" onClick={() => setRangoPersonalizado(false)}>
+          Hoy
+        </FiltroChip>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={desdeManual}
+            onChange={(e) => {
+              setDesdeManual(e.target.value);
+              setRangoPersonalizado(true);
+            }}
+            className="rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+          />
+          <span className="text-xs text-neutral-400">a</span>
+          <input
+            type="date"
+            value={hastaManual}
+            onChange={(e) => {
+              setHastaManual(e.target.value);
+              setRangoPersonalizado(true);
+            }}
+            className="rounded-lg border border-neutral-300 px-2 py-1.5 text-xs"
+          />
+        </div>
       </div>
 
       <IconInput
@@ -245,6 +307,7 @@ export function AdminPedidosPage() {
             </div>
           </article>
         ))}
+      </div>
       </div>
 
       {pedidoEditando && (

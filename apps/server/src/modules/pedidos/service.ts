@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { obtenerConfiguracion } from "../configuracion/service.js";
 import { ajustarStockPorVenta } from "../insumos/service.js";
+import { inicioDelDia, finDelDia } from "../reportes/service.js";
 
 /** Códigos de error transitorios de Prisma/SQLite bajo escritura concurrente
  * (varias estaciones cobrando/marcando "listo" al mismo tiempo) — no indican
@@ -464,8 +465,11 @@ export async function listarCola(estacion: "cocina" | "parrilla" | "entrega"): P
 
 export type FiltroPedidos = "pendientes" | "listos" | "atendidos" | "cancelados" | "todos";
 
-export async function listarPedidos(filtro: FiltroPedidos): Promise<PedidoDTO[]> {
-  const where =
+export async function listarPedidos(
+  filtro: FiltroPedidos,
+  rango?: { desde: Date; hasta: Date },
+): Promise<PedidoDTO[]> {
+  const filtroEstado =
     filtro === "pendientes"
       ? { estado: "PAGADO" as const }
       : filtro === "listos"
@@ -476,11 +480,20 @@ export async function listarPedidos(filtro: FiltroPedidos): Promise<PedidoDTO[]>
             ? { estado: "CANCELADO" as const }
             : undefined;
 
+  const where: Prisma.PedidoWhereInput = {
+    ...filtroEstado,
+    ...(rango ? { creadoEn: { gte: inicioDelDia(rango.desde), lte: finDelDia(rango.hasta) } } : {}),
+  };
+
   const pedidos = await prisma.pedido.findMany({
     where,
     include: pedidoInclude,
     orderBy: { id: "desc" },
-    take: 100,
+    // Sin filtro de fecha (uso interno, no la pantalla de Admin > Pedidos)
+    // se limita a los últimos 100 como antes; con un rango de fechas, ese
+    // rango ya acota la consulta y no hace falta cortarla arbitrariamente
+    // (un día ocupado real puede pasar de 100 pedidos).
+    take: rango ? undefined : 100,
   });
 
   return pedidos.map(toPedidoDTO);

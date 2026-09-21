@@ -8,13 +8,13 @@ import type {
 import ExcelJS from "exceljs";
 import { prisma } from "../../db.js";
 
-function inicioDelDia(fecha: Date): Date {
+export function inicioDelDia(fecha: Date): Date {
   const d = new Date(fecha);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function finDelDia(fecha: Date): Date {
+export function finDelDia(fecha: Date): Date {
   const d = new Date(fecha);
   d.setHours(23, 59, 59, 999);
   return d;

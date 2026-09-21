@@ -96,10 +96,11 @@ export async function pedidosRoutes(fastify: FastifyInstance) {
     "/pedidos",
     { preHandler: [fastify.requireRole("cajero", "cocina", "parrilla", "entrega", "admin")] },
     async (request) => {
-      const { estado } = request.query as { estado?: string };
+      const { estado, desde, hasta } = request.query as { estado?: string; desde?: string; hasta?: string };
       const filtros: FiltroPedidos[] = ["pendientes", "listos", "atendidos", "cancelados", "todos"];
       const filtro = (filtros as string[]).includes(estado ?? "") ? (estado as FiltroPedidos) : "pendientes";
-      return listarPedidos(filtro);
+      const rango = desde && hasta ? { desde: new Date(desde), hasta: new Date(hasta) } : undefined;
+      return listarPedidos(filtro, rango);
     },
   );
 
