@@ -11,6 +11,9 @@ apps/server/prisma/dev.db
 apps/server/prisma/dev.db-journal
 .vite/
 apps/print-agent/tickets/
+# Agente empaquetado (.exe + bundle + docs para copiar a la PC de caja) — es
+# material de despliegue, no código fuente. Se genera con esbuild + pkg.
+apps/print-agent/dist-exe/
 *.tsbuildinfo
 apps/web/vite.config.js
 apps/web/vite.config.d.ts

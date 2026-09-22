@@ -123,6 +123,8 @@ export function CajaPage() {
   const [modalPendientesAbierto, setModalPendientesAbierto] = useState(false);
   const [pedidoAAnular, setPedidoAAnular] = useState<Pedido | null>(null);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  const [reimprimiendo, setReimprimiendo] = useState<number | null>(null);
+  const [avisoReimpresion, setAvisoReimpresion] = useState<string | null>(null);
 
   function cargarPendientes() {
     apiFetch<Pedido[]>("/pedidos?estado=pendientes", token)
@@ -141,6 +143,20 @@ export function CajaPage() {
       cargarPendientes();
     } catch (err) {
       setErrorAnular(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
+    }
+  }
+
+  async function reimprimir(pedido: Pedido) {
+    setAvisoReimpresion(null);
+    setReimprimiendo(pedido.folio);
+    try {
+      await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
+      setAvisoReimpresion(`Ticket #${pedido.folio} reenviado a la impresora`);
+      setTimeout(() => setAvisoReimpresion(null), 3000);
+    } catch (err) {
+      setAvisoReimpresion(err instanceof ApiError ? err.message : "No se pudo reimprimir el ticket");
+    } finally {
+      setReimprimiendo(null);
     }
   }
 
@@ -806,6 +822,9 @@ export function CajaPage() {
       )}
       {modalPendientesAbierto && (
         <Modal titulo="Pedidos pendientes" onCerrar={() => setModalPendientesAbierto(false)}>
+          {avisoReimpresion && (
+            <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{avisoReimpresion}</div>
+          )}
           {ventasOfflinePendientes.some((v) => v.errorSincronizacion) && (
             <div className="mb-4 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-xs font-semibold text-red-800">
@@ -849,23 +868,34 @@ export function CajaPage() {
                       : "Para llevar"}
                     {pedido.clienteNombre ? ` · ${pedido.clienteNombre}` : ""}
                   </p>
-                  {puedeModificarse(pedido) ? (
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() => {
-                        setErrorAnular(null);
-                        setPedidoAAnular(pedido);
-                      }}
-                      className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-50"
+                      onClick={() => reimprimir(pedido)}
+                      disabled={reimprimiendo === pedido.folio}
+                      title="Reenviar el ticket a la impresora térmica"
+                      className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600 disabled:opacity-50"
                     >
-                      <IconTrash width={14} height={14} />
-                      Anular
+                      <IconRefresh width={14} height={14} />
+                      {reimprimiendo === pedido.folio ? "Enviando…" : "Reimprimir"}
                     </button>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-neutral-400">
-                      <IconCheck width={14} height={14} />
-                      Ya en preparación — no se puede anular
-                    </span>
-                  )}
+                    {puedeModificarse(pedido) ? (
+                      <button
+                        onClick={() => {
+                          setErrorAnular(null);
+                          setPedidoAAnular(pedido);
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 disabled:opacity-50"
+                      >
+                        <IconTrash width={14} height={14} />
+                        Anular
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-neutral-400">
+                        <IconCheck width={14} height={14} />
+                        Ya en preparación — no se puede anular
+                      </span>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

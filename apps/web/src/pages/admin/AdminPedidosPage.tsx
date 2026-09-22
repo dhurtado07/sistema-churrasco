@@ -6,7 +6,7 @@ import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
 import { useConfiguracion } from "../../lib/configuracionContext";
 import { formatBs, formatoFechaHoraBO } from "../../lib/format";
-import { IconAsistencia, IconCheck, IconEdit, IconPrint, IconSearch, IconTrash } from "../../components/icons";
+import { IconAsistencia, IconCheck, IconEdit, IconPrint, IconRefresh, IconSearch, IconTrash } from "../../components/icons";
 import { IconInput } from "../../components/IconInput";
 import { EditarPedidoModal } from "./EditarPedidoModal";
 import { HistorialPedidoModal } from "./HistorialPedidoModal";
@@ -54,6 +54,8 @@ export function AdminPedidosPage() {
   const [pedidoHistorial, setPedidoHistorial] = useState<Pedido | null>(null);
   const [pedidoACancelar, setPedidoACancelar] = useState<Pedido | null>(null);
   const [pedidoTicket, setPedidoTicket] = useState<Pedido | null>(null);
+  const [reimprimiendo, setReimprimiendo] = useState<number | null>(null);
+  const [avisoReimpresion, setAvisoReimpresion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
   // Por defecto se ve solo lo de hoy — un local que ya factura seguido
@@ -137,6 +139,20 @@ export function AdminPedidosPage() {
     }
   }
 
+  async function reimprimir(pedido: Pedido) {
+    setError(null);
+    setReimprimiendo(pedido.folio);
+    try {
+      await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
+      setAvisoReimpresion(`Ticket #${pedido.folio} reenviado a la impresora`);
+      setTimeout(() => setAvisoReimpresion(null), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo reimprimir el ticket");
+    } finally {
+      setReimprimiendo(null);
+    }
+  }
+
   return (
     <div className="space-y-4 p-3 sm:p-4">
       {/* Todo lo de acá adentro se oculta al imprimir un ticket puntual (ver
@@ -144,6 +160,11 @@ export function AdminPedidosPage() {
           pedidos detrás. */}
       <div className="no-imprimir space-y-4">
       <h1 className="text-lg font-semibold text-neutral-900">Pedidos</h1>
+
+      {avisoReimpresion && (
+        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{avisoReimpresion}</div>
+      )}
+      {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
       <div className="flex gap-2 overflow-x-auto">
         {TABS.map((t) => (
@@ -256,14 +277,25 @@ export function AdminPedidosPage() {
 
               <div className="flex flex-wrap gap-2">
                 {pedido.estado !== "CANCELADO" && (
-                  <button
-                    onClick={() => setPedidoTicket(pedido)}
-                    title="Ver el ticket y, si hace falta, reimprimirlo — por si se actualizó la página antes de imprimir o la impresora falló"
-                    className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600"
-                  >
-                    <IconPrint width={14} height={14} />
-                    Ticket
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setPedidoTicket(pedido)}
+                      title="Ver el ticket en pantalla"
+                      className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600"
+                    >
+                      <IconPrint width={14} height={14} />
+                      Ticket
+                    </button>
+                    <button
+                      onClick={() => reimprimir(pedido)}
+                      disabled={reimprimiendo === pedido.folio}
+                      title="Reenviar el ticket a la impresora térmica (por si la impresora falló o el cliente pide otra copia)"
+                      className="flex items-center gap-1.5 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600 disabled:opacity-50"
+                    >
+                      <IconRefresh width={14} height={14} />
+                      {reimprimiendo === pedido.folio ? "Enviando…" : "Reimprimir"}
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setPedidoHistorial(pedido)}
