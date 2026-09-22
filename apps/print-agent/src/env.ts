@@ -10,8 +10,12 @@ export const env = {
   apiUrl: process.env.API_URL ?? "http://localhost:4000",
   username: required("PRINT_AGENT_USERNAME"),
   password: required("PRINT_AGENT_PASSWORD"),
-  printerSink: (process.env.PRINTER_SINK ?? "file") as "file" | "tcp",
+  printerSink: (process.env.PRINTER_SINK ?? "file") as "file" | "tcp" | "usb",
   printerHost: process.env.PRINTER_HOST ?? "",
   printerPort: Number(process.env.PRINTER_PORT ?? 9100),
+  // Nombre de la impresora en el sistema (para PRINTER_SINK=usb). En macOS/Linux
+  // es el nombre de la cola CUPS (ver `lpstat -p`); en Windows, el nombre con el
+  // que se compartió la impresora (Compartir → nombre del recurso compartido).
+  printerName: process.env.PRINTER_NAME ?? "",
   ticketsDir: process.env.TICKETS_DIR ?? "./tickets",
 };

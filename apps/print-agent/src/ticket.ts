@@ -1,7 +1,7 @@
 import type { Pedido } from "shared";
 import { EscPosBuilder } from "./escpos.js";
 
-const ANCHO = 32; // caracteres por línea — típico de rollo térmico de 58mm
+const ANCHO = 48; // caracteres por línea — Font A en rollo de 80mm (Epson TM-T20IV-L)
 
 export interface NegocioInfo {
   nombreNegocio: string;
@@ -42,12 +42,12 @@ export function construirTicketEscPos(pedido: Pedido, negocio: NegocioInfo = NEG
   builder.line(`Ticket #${pedido.folio}`);
   builder.line(fechaHoraLocal(pedido.creadoEn));
   builder.align("left");
-  builder.separator();
+  builder.separator("-", ANCHO);
 
   if (pedido.clienteNombre) builder.line(`Cliente: ${pedido.clienteNombre}`);
   if (pedido.clienteCarnet) builder.line(`Carnet: ${pedido.clienteCarnet}`);
   builder.line(tipoConsumoTexto(pedido));
-  builder.separator();
+  builder.separator("-", ANCHO);
 
   for (const item of pedido.items) {
     builder.line(lineaDosColumnas(`${item.cantidad}x ${item.nombreProducto}`, formatoMoneda(item.precioUnitario * item.cantidad)));
@@ -57,11 +57,11 @@ export function construirTicketEscPos(pedido: Pedido, negocio: NegocioInfo = NEG
     }
   }
 
-  builder.separator();
+  builder.separator("-", ANCHO);
   builder.bold(true);
   builder.line(lineaDosColumnas("TOTAL", formatoMoneda(pedido.total)));
   builder.bold(false);
-  builder.separator();
+  builder.separator("-", ANCHO);
   builder.align("center");
   builder.line(`Atendido por: ${pedido.cajeroUsername}`);
   builder.feed(3);
