@@ -73,7 +73,13 @@ export function TicketModal({
 
     // +1mm de colchón para que un redondeo hacia abajo no empuje la última línea
     // a una segunda hoja.
-    const altoMm = Math.ceil(altoPx * PX_A_MM) + MARGEN_MM * 2 + 1;
+    const altoContenidoMm = Math.ceil(altoPx * PX_A_MM) + MARGEN_MM * 2 + 1;
+    // El alto NUNCA debe ser menor que el ancho: si la página queda más ancha
+    // que alta (ticket cortito), Chrome/el driver de la Epson la toman como
+    // horizontal (landscape) y sacan el ticket rotado. Forzamos alto > ancho
+    // para que siempre imprima vertical, sin dejar de ajustarse al contenido en
+    // los tickets normales (que casi siempre superan el ancho del rollo).
+    const altoMm = Math.max(altoContenidoMm, ANCHO_ROLLO_MM + 1);
 
     const style = document.createElement("style");
     style.textContent = `@page { size: ${ANCHO_ROLLO_MM}mm ${altoMm}mm; margin: ${MARGEN_MM}mm; }`;
