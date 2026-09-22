@@ -1,9 +1,18 @@
-import { useEffect, type ComponentType, type SVGProps } from "react";
+import { useRef, type ComponentType, type SVGProps } from "react";
 import type { Pedido } from "shared";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { formatoExtra } from "../lib/pedidosDisplay";
 import { IconClose, IconPrint } from "./icons";
+
+// Ancho del rollo de la impresora térmica (Epson TM-T20IV-L = 80mm). Si algún
+// día se usa un rollo de 58mm, basta cambiar este número.
+const ANCHO_ROLLO_MM = 80;
+// Margen a cada lado. El área imprimible de la TM-T20 en 80mm es ~72mm, así que
+// dejamos ~72mm de contenido para que no se corte por los bordes.
+const MARGEN_MM = 4;
+// 1 pulgada CSS = 96px = 25.4mm — para convertir la altura medida en px a mm.
+const PX_A_MM = 25.4 / 96;
 
 /**
  * Ticket en pantalla, con opción de imprimirlo por el navegador. Se usa tanto
@@ -27,25 +36,60 @@ export function TicketModal({
   onCerrar: () => void;
 }) {
   const { configuracion } = useConfiguracion();
+  const ticketRef = useRef<HTMLDivElement>(null);
 
-  // Mientras el ticket está abierto, la hoja de impresión pasa a ser el rollo
-  // térmico de 58mm de ancho y alto automático (lo justo que ocupa el ticket).
-  // Se sobrescribe la @page POR DEFECTO —en vez de usar una @page con nombre
-  // solo para el ticket— porque al mezclar dos tamaños de página el navegador
-  // metía una hoja en blanco antes del ticket. Los reportes de Admin se
-  // imprimen con el ticket cerrado, así que siguen saliendo en A4.
-  useEffect(() => {
+  /**
+   * Imprime el ticket ajustando la hoja al rollo térmico. Antes se dejaba que
+   * el navegador usara su hoja por defecto (Carta/A4): el ticket salía arriba y
+   * abajo quedaba un espacio en blanco enorme, desperdiciando una hoja entera
+   * por ticket. Ahora armamos una @page de 80mm de ancho y del alto EXACTO del
+   * contenido, para que el rollo avance solo lo que ocupa el ticket y corte ahí.
+   *
+   * El alto se mide al vuelo porque el CSS `@page { size }` no admite alto
+   * "auto" junto a un ancho fijo (queda inválido y el navegador lo ignora). Se
+   * mide sobre un clon con el mismo ancho que tendrá impreso, ya que el ticket
+   * en pantalla es más ancho y el texto envolvería distinto.
+   */
+  function imprimir() {
+    const nodo = ticketRef.current;
+    if (!nodo) {
+      window.print();
+      return;
+    }
+    const anchoContenidoMm = ANCHO_ROLLO_MM - MARGEN_MM * 2;
+
+    const clon = nodo.cloneNode(true) as HTMLElement;
+    clon.querySelectorAll(".no-imprimir").forEach((el) => el.remove());
+    clon.style.position = "absolute";
+    clon.style.left = "-9999px";
+    clon.style.top = "0";
+    clon.style.width = `${anchoContenidoMm}mm`;
+    clon.style.maxWidth = "none";
+    clon.style.padding = "0";
+    clon.style.boxShadow = "none";
+    document.body.appendChild(clon);
+    const altoPx = clon.offsetHeight;
+    document.body.removeChild(clon);
+
+    // +1mm de colchón para que un redondeo hacia abajo no empuje la última línea
+    // a una segunda hoja.
+    const altoMm = Math.ceil(altoPx * PX_A_MM) + MARGEN_MM * 2 + 1;
+
     const style = document.createElement("style");
-    style.textContent = "@page { size: 58mm auto; margin: 3mm; }";
+    style.textContent = `@page { size: ${ANCHO_ROLLO_MM}mm ${altoMm}mm; margin: ${MARGEN_MM}mm; }`;
     document.head.appendChild(style);
-    return () => {
-      document.head.removeChild(style);
+
+    const limpiar = () => {
+      style.remove();
+      window.removeEventListener("afterprint", limpiar);
     };
-  }, []);
+    window.addEventListener("afterprint", limpiar);
+    window.print();
+  }
 
   return (
     <div className="ticket-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="ticket-imprimible w-full max-w-sm rounded-t-2xl bg-white p-5 shadow-lg sm:rounded-2xl">
+      <div ref={ticketRef} className="ticket-imprimible w-full max-w-sm rounded-t-2xl bg-white p-5 shadow-lg sm:rounded-2xl">
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-neutral-500">
           {configuracion.nombreNegocio}
         </p>
@@ -91,7 +135,7 @@ export function TicketModal({
 
         <div className="no-imprimir flex gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={imprimir}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-200 px-3 py-3 text-sm font-medium"
           >
             <IconPrint width={16} height={16} />
