@@ -28,6 +28,11 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/churrasco
       PORT: 4000
+      # Zona horaria del negocio (Bolivia, sin horario de verano). El server
+      # calcula los límites de "día" y formatea fechas en hora local; sin esto
+      # el contenedor corre en UTC y los pedidos de la noche caían en el día
+      # UTC siguiente (no salían en Admin > Pedidos, descuadre en reportes).
+      TZ: America/La_Paz
 
   web:
     build:

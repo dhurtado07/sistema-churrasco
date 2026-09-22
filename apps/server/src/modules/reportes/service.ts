@@ -93,7 +93,13 @@ export async function reporteFinanciero(
 ): Promise<ReporteFinanciero> {
   const [movimientos, pedidos] = await Promise.all([
     prisma.movimientoCaja.findMany({
-      where: { anulado: false, creadoEn: { gte: desde, lte: hasta } },
+      // anulado:false descarta los movimientos originales que se anularon (p.ej.
+      // el ingreso de una venta cancelada). anulaMovimientoId:null descarta los
+      // movimientos "reverso" que se crean para neutralizarlos: si no, la venta
+      // cancelada dejaría su reverso (tipo EGRESO) contándose como un egreso
+      // real y bajando la ganancia. Excluyendo ambos, la venta cancelada queda
+      // en cero, como si nunca hubiera pasado.
+      where: { anulado: false, anulaMovimientoId: null, creadoEn: { gte: desde, lte: hasta } },
       orderBy: { creadoEn: "asc" },
     }),
     // Mismo criterio que reporteGanancias: la venta cuenta desde que se cobra
@@ -171,7 +177,9 @@ export async function reporteFinanciero(
 export async function generarExcelFinanciero(desde: Date, hasta: Date, agrupar: "dia" | "semana" | "mes"): Promise<ExcelJS.Buffer> {
   const reporte = await reporteFinanciero(desde, hasta, agrupar);
   const movimientos = await prisma.movimientoCaja.findMany({
-    where: { anulado: false, creadoEn: { gte: desde, lte: hasta } },
+    // Igual que en reporteFinanciero: sin los originales anulados ni sus
+    // reversos, para que una venta cancelada no aparezca como egreso.
+    where: { anulado: false, anulaMovimientoId: null, creadoEn: { gte: desde, lte: hasta } },
     include: { registradoPor: true },
     orderBy: { creadoEn: "asc" },
   });

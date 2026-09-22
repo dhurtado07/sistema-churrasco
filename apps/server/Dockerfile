@@ -30,11 +30,18 @@ RUN pnpm --filter server run db:generate
 RUN pnpm --filter shared build && pnpm --filter server build
 
 FROM node:20-slim AS runtime
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+# tzdata: el server calcula los límites de "día" (inicioDelDia/finDelDia) y
+# formatea fechas en hora LOCAL. Sin fijar la zona, el contenedor corre en UTC
+# y un pedido hecho de noche en Bolivia (UTC-4) cae en el día UTC siguiente:
+# desaparecía de Admin > Pedidos y descuadraba los reportes por día. Fijamos la
+# zona del negocio (Bolivia, sin horario de verano) para que todo el cálculo de
+# días use esa hora.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl tzdata && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /repo
 COPY --from=build /repo ./
 ENV NODE_ENV=production
+ENV TZ=America/La_Paz
 WORKDIR /repo/apps/server
 EXPOSE 4000
 # Aplica migraciones pendientes contra Postgres y recién ahí arranca — así
