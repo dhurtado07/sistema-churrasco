@@ -42,6 +42,11 @@ model Configuracion {
   // para llevar, o el mesero ya sabe a quién le sirve) — si está apagado, Caja
   // no pide el número y las pantallas no lo muestran.
   mesaHabilitada     Boolean @default(true)
+  // Igual idea que mesaHabilitada pero para el campo CI/carnet: si está
+  // apagado, Caja no lo muestra. Nunca es obligatorio (a diferencia del
+  // nombre del cliente, que sí lo es siempre) — es solo un dato opcional
+  // que algunos negocios quieren poder pedir y otros no.
+  ciHabilitado       Boolean @default(false)
   nombreNegocio      String  @default("BRASA ARISP")
   direccion          String?
   telefono           String?
@@ -154,6 +159,12 @@ model Extra {
 model Pedido {
   // El id autoincremental sirve directamente como folio (orden de llegada / número de ticket).
   id               Int          @id @default(autoincrement())
+  // Turno de caja en el que se cobró, y número de ticket dentro de ese turno:
+  // arranca en 1 cada vez que se abre caja (lo que ve el cliente y el
+  // personal). `id` sigue siendo el identificador único interno (URLs, FKs).
+  turno            CajaTurno?   @relation(fields: [turnoId], references: [id], onDelete: SetNull)
+  turnoId          String?
+  numeroTicket     Int          @default(0)
   cliente          Cliente?     @relation(fields: [clienteId], references: [id])
   clienteId        String?
   // Snapshot del nombre/carnet al momento de la venta — se conserva aunque el
@@ -197,6 +208,7 @@ model Pedido {
   // la tabla de pedidos.
   @@index([estado])
   @@index([creadoEn])
+  @@index([turnoId])
 }
 
 // Registro de qué cambió y quién lo hizo cada vez que se edita o cancela un
@@ -277,8 +289,17 @@ model CajaTurno {
   efectivoEsperado  Float?
   diferencia        Float?
   notaCierre        String?
+  // Lo que el cajero verificó a mano en su app (QR, tarjeta, transferencia) al
+  // cerrar: { "QR": { "esperado": 45, "contado": 45, "diferencia": 0 } }. Igual
+  // que efectivoContado, pero para el dinero que no está físicamente en la caja.
+  conteoOtrosMetodos Json?
   cerradoEn         DateTime?
   movimientos       MovimientoCaja[]
+  pedidos           Pedido[]
+  // Último número de ticket entregado en este turno — se incrementa de forma
+  // atómica al crear cada pedido (ver crearPedido), así dos cobros a la vez
+  // nunca reciben el mismo número.
+  ultimoTicket      Int              @default(0)
 
   // Cada venta consulta "¿hay un turno abierto?" antes de cobrar (ver
   // asegurarTurnoAbierto en pedidos/service.ts) — se ejecuta en cada pedido.

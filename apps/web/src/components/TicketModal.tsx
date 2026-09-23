@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import type { Pedido } from "shared";
+import { codigoPedido } from "shared";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { formatoExtra } from "../lib/pedidosDisplay";
@@ -36,7 +37,8 @@ export function TicketModal({
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-neutral-500">
           {configuracion.nombreNegocio}
         </p>
-        <h2 className="mb-1 text-lg font-bold">{pendienteSync ? "Ticket — pendiente de sincronizar" : `Ticket #${pedido.folio}`}</h2>
+        <h2 className="mb-1 text-lg font-bold">{pendienteSync ? "Ticket — pendiente de sincronizar" : `Ticket #${pedido.numeroTicket}`}</h2>
+        {!pendienteSync && <p className="mb-1 text-xs text-neutral-500">{codigoPedido(pedido.folio)}</p>}
         {pendienteSync && (
           <p className="mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
             Se cobró sin conexión — se manda solo al servidor apenas vuelva la señal, no hace falta hacer nada.

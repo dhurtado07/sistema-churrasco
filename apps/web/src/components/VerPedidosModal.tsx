@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Pedido } from "shared";
-import { SOCKET_EVENTS } from "shared";
+import { SOCKET_EVENTS, codigoPedido, coincideConCodigo } from "shared";
 import { Modal } from "./Modal";
 import { IconInput } from "./IconInput";
 import { IconPedidos, IconSearch } from "./icons";
@@ -70,7 +70,8 @@ export function VerPedidosModal() {
     if (!termino) return pedidos;
     return pedidos.filter(
       (p) =>
-        String(p.folio).includes(termino) ||
+        String(p.numeroTicket).includes(termino) ||
+        coincideConCodigo(p.folio, termino) ||
         p.clienteNombre?.toLowerCase().includes(termino) ||
         p.mesa?.toLowerCase().includes(termino),
     );
@@ -123,7 +124,10 @@ export function VerPedidosModal() {
             {pedidosFiltrados.map((pedido) => (
               <li key={pedido.id} className="rounded-lg border border-neutral-200 p-3 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-bold text-neutral-900">#{pedido.folio}</span>
+                  <span className="font-bold text-neutral-900">
+                    #{pedido.numeroTicket}
+                    <span className="ml-2 text-xs font-normal text-neutral-500">{codigoPedido(pedido.folio)}</span>
+                  </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ESTADO_BADGE[pedido.estado]}`}>
                     {ESTADO_LABEL[pedido.estado]}
                   </span>

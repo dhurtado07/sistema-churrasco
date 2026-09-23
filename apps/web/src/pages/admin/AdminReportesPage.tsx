@@ -3,6 +3,7 @@ import type { HorasTrabajadasEmpleado, ReporteFinanciero } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, descargarArchivo, ApiError } from "../../lib/api";
 import { formatBs, formatoFechaCortaDesdeClaveBO, formatoHoraBO } from "../../lib/format";
+import { METODO_LABEL } from "../../lib/metodoPago";
 import { agruparPorDia } from "../../lib/asistencia";
 import {
   IconAsistencia,
@@ -60,12 +61,6 @@ const COLOR_CATEGORIA: Record<string, string> = {
   VENTA: PALETA.violeta,
 };
 
-const METODO_LABEL: Record<string, string> = {
-  EFECTIVO: "Efectivo",
-  TARJETA: "Tarjeta",
-  TRANSFERENCIA: "Transferencia",
-  QR: "QR",
-};
 const COLOR_METODO: Record<string, string> = {
   EFECTIVO: PALETA.azul,
   TARJETA: PALETA.naranja,

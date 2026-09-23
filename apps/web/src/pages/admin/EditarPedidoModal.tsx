@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from "../../lib/api";
 import { itemsPedidoACarrito, useCarrito } from "../../lib/useCarrito";
 import { useMenu } from "../../lib/menuContext";
 import { formatBs } from "../../lib/format";
+import { useConfiguracion } from "../../lib/configuracionContext";
 import { IconInput } from "../../components/IconInput";
 import { ClienteModal } from "./AdminClientesPage";
 import {
@@ -11,6 +12,7 @@ import {
   IconCheck,
   IconClose,
   IconHome,
+  IconIdCard,
   IconMesa,
   IconMinus,
   IconPlus,
@@ -31,6 +33,7 @@ export function EditarPedidoModal({
   onGuardado: () => void;
 }) {
   const { productos, extras } = useMenu();
+  const { configuracion } = useConfiguracion();
   const { carrito, agregarProducto, cambiarCantidad, cambiarCantidadExtra, quitarLinea, total } = useCarrito(
     extras,
     itemsPedidoACarrito(pedido.items),
@@ -47,6 +50,13 @@ export function EditarPedidoModal({
         }
       : null,
   );
+  // La inmensa mayoría de los pedidos se cobran en Caja con nombre libre, sin
+  // un Cliente del directorio (clienteId null) — si acá solo se pudiera
+  // guardar con un cliente del directorio, editar cualquiera de esos pedidos
+  // quedaría bloqueado. Estos campos preservan/editan ese texto libre; elegir
+  // un cliente del directorio (arriba) tiene prioridad si se usa.
+  const [clienteNombreLibre, setClienteNombreLibre] = useState(pedido.clienteNombre ?? "");
+  const [clienteCarnetLibre, setClienteCarnetLibre] = useState(pedido.clienteCarnet ?? "");
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [resultadosCliente, setResultadosCliente] = useState<Cliente[]>([]);
   const [modalClienteAbierto, setModalClienteAbierto] = useState(false);
@@ -82,6 +92,10 @@ export function EditarPedidoModal({
 
   async function guardar() {
     if (carrito.length === 0) return;
+    if (!clienteSeleccionado && !clienteNombreLibre.trim()) {
+      setError("Indicá el nombre del cliente antes de guardar.");
+      return;
+    }
     if (tipoConsumo === "LOCAL" && !mesa.trim()) {
       setError("Indicá el número de mesa antes de guardar.");
       return;
@@ -93,6 +107,8 @@ export function EditarPedidoModal({
         method: "PATCH",
         body: JSON.stringify({
           clienteId: clienteSeleccionado?.id,
+          clienteNombre: clienteSeleccionado?.nombre ?? clienteNombreLibre.trim(),
+          clienteCarnet: clienteSeleccionado?.carnet ?? (configuracion.ciHabilitado ? clienteCarnetLibre.trim() || undefined : undefined),
           tipoConsumo,
           mesa: tipoConsumo === "LOCAL" ? mesa.trim() : undefined,
           items: carrito.map((linea) => ({
@@ -114,7 +130,7 @@ export function EditarPedidoModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
       <div className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-lg sm:rounded-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-5 py-4">
-          <h2 className="text-lg font-bold text-neutral-900">Editar ticket #{pedido.folio}</h2>
+          <h2 className="text-lg font-bold text-neutral-900">Editar ticket #{pedido.numeroTicket}</h2>
           <button
             onClick={onCerrar}
             aria-label="Cerrar"
@@ -286,6 +302,26 @@ export function EditarPedidoModal({
                       ))}
                     </ul>
                   )}
+                  {/* La mayoría de los pedidos no tienen un cliente del
+                      directorio (se cobraron con nombre libre en Caja) — sin
+                      esto no habría forma de guardar el nombre que ya tenían,
+                      ni de cumplir con que el nombre es obligatorio. */}
+                  <IconInput
+                    icon={IconUser}
+                    className="mt-2"
+                    placeholder="Nombre del cliente"
+                    value={clienteNombreLibre}
+                    onChange={(e) => setClienteNombreLibre(e.target.value)}
+                  />
+                  {configuracion.ciHabilitado && (
+                    <IconInput
+                      icon={IconIdCard}
+                      className="mt-2"
+                      placeholder="CI / Carnet (opcional)"
+                      value={clienteCarnetLibre}
+                      onChange={(e) => setClienteCarnetLibre(e.target.value)}
+                    />
+                  )}
                 </div>
               )}
 
@@ -327,7 +363,12 @@ export function EditarPedidoModal({
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <button
             onClick={guardar}
-            disabled={carrito.length === 0 || guardando || (tipoConsumo === "LOCAL" && !mesa.trim())}
+            disabled={
+              carrito.length === 0 ||
+              guardando ||
+              (!clienteSeleccionado && !clienteNombreLibre.trim()) ||
+              (tipoConsumo === "LOCAL" && !mesa.trim())
+            }
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
             <IconCheck width={16} height={16} />

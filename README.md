@@ -115,6 +115,30 @@ GitHub Actions (`.github/workflows/deploy.yml`): copia el código al servidor
 por SSH y levanta `docker-compose.prod.yml` (Postgres + servidor + Caddy con
 HTTPS automático). Ver ese archivo para el detalle del pipeline.
 
+### Respaldo de la base de datos ANTES de desplegar
+
+El pipeline **no hace respaldo**, y al arrancar el contenedor del servidor corre
+`prisma migrate deploy` sobre los datos reales. Antes de mergear a `main`, en el
+VPS (dentro de `DEPLOY_PATH`):
+
+```bash
+mkdir -p ~/respaldos
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U postgres -Fc churrasco > ~/respaldos/antes-deploy-$(date +%Y%m%d-%H%M).dump
+ls -la ~/respaldos   # el archivo NO debe pesar 0 bytes
+```
+
+Restaurar (solo si hace falta volver atrás; reemplaza los datos actuales):
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  pg_restore -U postgres -d churrasco --clean --if-exists --no-owner < ~/respaldos/<archivo>.dump
+```
+
+Conviene copiar también el `.dump` fuera del VPS. Las migraciones solo agregan
+columnas (y unas pocas correcciones de datos), así que volver a una versión
+anterior del código no requiere restaurar el respaldo.
+
 ### Puesta en marcha del VPS (una sola vez)
 
 1. **Instalar Docker** en el VPS (Ubuntu):

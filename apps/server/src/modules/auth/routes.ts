@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import bcrypt from "bcryptjs";
 import { cambiarMiPasswordSchema, loginSchema, type Rol } from "shared";
 import { prisma } from "../../db.js";
+import { env } from "../../env.js";
 
 export async function authRoutes(fastify: FastifyInstance) {
   fastify.post(
@@ -11,7 +12,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       // puñado de estaciones iniciando sesión juntas al abrir el local (o un
       // usuario que se equivoca un par de veces) nunca lo note, pero corta
       // en seco un intento de adivinar contraseñas a repetición.
-      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+      config: { rateLimit: { max: env.loginRateLimitMax, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
       const parsed = loginSchema.safeParse(request.body);

@@ -53,7 +53,7 @@ export function ConfirmarPedidoModal({
         <p className="text-sm">{pregunta}</p>
       </div>
 
-      <p className="mb-1 text-sm font-semibold text-neutral-900">Ticket #{pedido.folio}</p>
+      <p className="mb-1 text-sm font-semibold text-neutral-900">Ticket #{pedido.numeroTicket}</p>
       {pedido.clienteNombre && (
         <p className="mb-2 text-sm text-neutral-600">Cliente: {pedido.clienteNombre}</p>
       )}

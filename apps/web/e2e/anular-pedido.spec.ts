@@ -16,6 +16,7 @@ test("anular un pedido desde Caja usa el modal de confirmación de la app, no el
   await page.waitForTimeout(500);
 
   await page.click("text=Churrasco Sencillo");
+  await page.fill('input[placeholder="Nombre del cliente"]', "Cliente de prueba");
   await page.click("text=Para llevar");
   await page.getByRole("button", { name: /marcar como pagado/i }).click();
   await page.getByRole("button", { name: "Sí" }).click();

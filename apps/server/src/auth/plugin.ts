@@ -38,7 +38,7 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
     try {
       await request.jwtVerify();
     } catch {
-      reply.code(401).send({ error: "No autenticado" });
+      reply.code(401).send({ error: "No autenticado", code: "SESION_EXPIRADA" });
     }
   });
 
@@ -47,7 +47,7 @@ export const authPlugin = fp(async (fastify: FastifyInstance) => {
       try {
         await request.jwtVerify();
       } catch {
-        reply.code(401).send({ error: "No autenticado" });
+        reply.code(401).send({ error: "No autenticado", code: "SESION_EXPIRADA" });
         return;
       }
       if (!roles.includes(request.user.rol)) {

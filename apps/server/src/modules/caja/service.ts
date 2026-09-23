@@ -1,12 +1,32 @@
 import type {
   CajaTurno as CajaTurnoDTO,
+  TurnoConVentas,
+  ConteoOtrosMetodos,
+  MetodoPago,
+  ResumenTurno,
   MovimientoCaja as MovimientoCajaDTO,
   CrearMovimientoCajaInput,
   Pedido as PedidoDTO,
 } from "shared";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 
+/** Cliente de base de datos: el normal o el de una transacción — así el cierre
+ * de turno y la entrega de pendientes pueden ir en una sola transacción. */
+type Db = Prisma.TransactionClient;
+
+const aCentavos = (n: number) => Math.round(n * 100) / 100;
+
 export class CajaValidationError extends Error {}
+
+/** Fragmento de `where` reutilizable: descarta los movimientos originales que
+ * se anularon (ej. el ingreso de una venta cancelada) Y sus reversos — sin
+ * ambas condiciones, el reverso (tipo opuesto, mismo monto) se contaría como
+ * ingreso/egreso real, cuando en realidad neutraliza al original y no debería
+ * afectar ningún total. Único punto de verdad: cualquier cálculo nuevo sobre
+ * MovimientoCaja que sume ingresos/egresos reales debe spreadear esto (ver
+ * cerrarTurno acá mismo y reporteFinanciero en reportes/service.ts). */
+export const MOVIMIENTO_REAL_WHERE = { anulado: false, anulaMovimientoId: null } as const;
 
 const turnoInclude = { abiertoPor: true, cerradoPor: true } as const;
 type TurnoConRelaciones = Awaited<
@@ -26,10 +46,11 @@ function toTurnoDTO(turno: TurnoConRelaciones): CajaTurnoDTO {
     diferencia: turno.diferencia,
     notaCierre: turno.notaCierre,
     cerradoEn: turno.cerradoEn ? turno.cerradoEn.toISOString() : null,
+    conteoOtrosMetodos: (turno.conteoOtrosMetodos as ConteoOtrosMetodos | null) ?? null,
   };
 }
 
-const movimientoInclude = { registradoPor: true } as const;
+const movimientoInclude = { registradoPor: true, pedido: { select: { estado: true } } } as const;
 type MovimientoConRelaciones = Awaited<
   ReturnType<typeof prisma.movimientoCaja.findFirstOrThrow<{ include: typeof movimientoInclude }>>
 >;
@@ -48,6 +69,7 @@ function toMovimientoDTO(movimiento: MovimientoConRelaciones): MovimientoCajaDTO
     registradoPorNombre: movimiento.registradoPor.nombre,
     anulaMovimientoId: movimiento.anulaMovimientoId,
     anulado: movimiento.anulado,
+    pedidoEstado: (movimiento.pedido?.estado as MovimientoCajaDTO["pedidoEstado"]) ?? null,
     creadoEn: movimiento.creadoEn.toISOString(),
   };
 }
@@ -72,25 +94,90 @@ export async function abrirTurno(usuarioId: string, fondoInicial: number): Promi
   return toTurnoDTO(turno);
 }
 
+/** Único punto de cálculo de las cuentas de un turno: lo usan el resumen que
+ * ve el cajero antes de contar y el cierre mismo, para que nunca difieran.
+ * Una venta cuenta desde que se cobra (al imprimir el ticket), no cuando se
+ * entrega; y una venta anulada no cuenta (ver MOVIMIENTO_REAL_WHERE). */
+export async function calcularResumenTurno(
+  turnoId: string,
+  fondoInicial: number,
+  db: Db = prisma,
+): Promise<Omit<ResumenTurno, "pedidosSinEntregar">> {
+  const movimientos = await db.movimientoCaja.findMany({ where: { turnoId, ...MOVIMIENTO_REAL_WHERE } });
+
+  const ventas = movimientos.filter((m) => m.categoria === "VENTA" && m.tipo === "INGRESO");
+  const porMetodo = new Map<MetodoPago, { cantidad: number; total: number }>();
+  for (const venta of ventas) {
+    const metodo = (venta.metodoPago ?? "EFECTIVO") as MetodoPago;
+    const acumulado = porMetodo.get(metodo) ?? { cantidad: 0, total: 0 };
+    porMetodo.set(metodo, { cantidad: acumulado.cantidad + 1, total: acumulado.total + venta.monto });
+  }
+
+  const enEfectivo = movimientos.filter((m) => m.metodoPago === "EFECTIVO");
+  const ingresosEfectivo = enEfectivo.filter((m) => m.tipo === "INGRESO").reduce((s, m) => s + m.monto, 0);
+  const ventasEfectivo = porMetodo.get("EFECTIVO")?.total ?? 0;
+  const egresosEfectivo = enEfectivo.filter((m) => m.tipo === "EGRESO").reduce((s, m) => s + m.monto, 0);
+
+  return {
+    fondoInicial,
+    cantidadVentas: new Set(ventas.map((v) => v.pedidoId)).size,
+    totalVendido: ventas.reduce((s, v) => s + v.monto, 0),
+    ventasPorMetodo: [...porMetodo.entries()].map(([metodoPago, v]) => ({ metodoPago, ...v })),
+    ventasEfectivo,
+    otrosIngresosEfectivo: ingresosEfectivo - ventasEfectivo,
+    egresosEfectivo,
+    efectivoEsperado: aCentavos(fondoInicial + ingresosEfectivo - egresosEfectivo),
+    otrosMetodos: metodosNoEfectivo(movimientos),
+  };
+}
+
+/** Neto (ingresos - egresos) de cada medio que no es efectivo con movimientos:
+ * es lo que el cajero debería ver en su app para ese medio. */
+function metodosNoEfectivo(
+  movimientos: { tipo: string; monto: number; metodoPago: string | null }[],
+): ResumenTurno["otrosMetodos"] {
+  const neto = new Map<Exclude<MetodoPago, "EFECTIVO">, number>();
+  for (const m of movimientos) {
+    if (!m.metodoPago || m.metodoPago === "EFECTIVO") continue;
+    const metodo = m.metodoPago as Exclude<MetodoPago, "EFECTIVO">;
+    neto.set(metodo, (neto.get(metodo) ?? 0) + (m.tipo === "INGRESO" ? m.monto : -m.monto));
+  }
+  return [...neto.entries()].map(([metodoPago, esperado]) => ({ metodoPago, esperado }));
+}
+
+export async function obtenerResumenTurno(turnoId: string): Promise<Omit<ResumenTurno, "pedidosSinEntregar">> {
+  const turno = await prisma.cajaTurno.findUnique({ where: { id: turnoId } });
+  if (!turno) throw new CajaValidationError("Turno no encontrado");
+  return calcularResumenTurno(turnoId, turno.fondoInicial);
+}
+
 export async function cerrarTurno(
   turnoId: string,
   usuarioId: string,
   efectivoContado: number,
   notaCierre?: string,
+  otrosMetodosContados: Partial<Record<Exclude<MetodoPago, "EFECTIVO">, number>> = {},
+  db: Db = prisma,
 ): Promise<CajaTurnoDTO> {
-  const turno = await prisma.cajaTurno.findUnique({ where: { id: turnoId } });
+  const turno = await db.cajaTurno.findUnique({ where: { id: turnoId } });
   if (!turno) throw new CajaValidationError("Turno no encontrado");
   if (turno.estado !== "ABIERTO") throw new CajaValidationError("Este turno ya está cerrado.");
 
-  const movimientos = await prisma.movimientoCaja.findMany({
-    where: { turnoId, anulado: false, metodoPago: "EFECTIVO" },
-  });
-  const ingresosEfectivo = movimientos.filter((m) => m.tipo === "INGRESO").reduce((sum, m) => sum + m.monto, 0);
-  const egresosEfectivo = movimientos.filter((m) => m.tipo === "EGRESO").reduce((sum, m) => sum + m.monto, 0);
-  const efectivoEsperado = turno.fondoInicial + ingresosEfectivo - egresosEfectivo;
-  const diferencia = efectivoContado - efectivoEsperado;
+  const resumen = await calcularResumenTurno(turnoId, turno.fondoInicial, db);
+  const { efectivoEsperado } = resumen;
+  // A centavos: sumar decimales en float deja ruido (1.4e-14) y un cierre
+  // exacto se vería como "sobran Bs 0,00".
+  const diferencia = aCentavos(efectivoContado - efectivoEsperado);
 
-  const cerrado = await prisma.cajaTurno.update({
+  // Solo se guarda lo que el cajero verificó; el esperado sale del sistema.
+  const conteoOtrosMetodos: ConteoOtrosMetodos = {};
+  for (const { metodoPago, esperado } of resumen.otrosMetodos) {
+    const contado = otrosMetodosContados[metodoPago];
+    if (contado === undefined) continue;
+    conteoOtrosMetodos[metodoPago] = { esperado, contado, diferencia: aCentavos(contado - esperado) };
+  }
+
+  const cerrado = await db.cajaTurno.update({
     where: { id: turnoId },
     data: {
       estado: "CERRADO",
@@ -100,10 +187,48 @@ export async function cerrarTurno(
       diferencia,
       notaCierre: notaCierre ?? null,
       cerradoEn: new Date(),
+      conteoOtrosMetodos: Object.keys(conteoOtrosMetodos).length > 0 ? conteoOtrosMetodos : undefined,
     },
     include: turnoInclude,
   });
   return toTurnoDTO(cerrado);
+}
+
+/** Turnos abiertos dentro del rango (más recientes primero) — para ver con
+ * cuánto se abrió cada caja y cómo cerró, incluso los ya cerrados. */
+export async function listarTurnos(rango: { desde?: Date; hasta?: Date }): Promise<TurnoConVentas[]> {
+  const turnos = await prisma.cajaTurno.findMany({
+    where: {
+      abiertoEn: {
+        ...(rango.desde ? { gte: rango.desde } : {}),
+        ...(rango.hasta ? { lte: rango.hasta } : {}),
+      },
+    },
+    include: turnoInclude,
+    orderBy: { abiertoEn: "desc" },
+    take: 200,
+  });
+
+  // Lo vendido por turno y método de pago, en una sola consulta (no una por turno).
+  const ventas = await prisma.movimientoCaja.groupBy({
+    by: ["turnoId", "metodoPago"],
+    where: { turnoId: { in: turnos.map((t) => t.id) }, ...MOVIMIENTO_REAL_WHERE, categoria: "VENTA", tipo: "INGRESO" },
+    _sum: { monto: true },
+  });
+  const ventasDe = (turnoId: string) => {
+    const porMetodo: TurnoConVentas["ventasPorMetodo"] = {};
+    for (const v of ventas.filter((x) => x.turnoId === turnoId)) {
+      const metodo = (v.metodoPago ?? "EFECTIVO") as MetodoPago;
+      porMetodo[metodo] = (porMetodo[metodo] ?? 0) + (v._sum.monto ?? 0);
+    }
+    return porMetodo;
+  };
+
+  return turnos.map((t) => {
+    const ventasPorMetodo = ventasDe(t.id);
+    const totalVendido = Object.values(ventasPorMetodo).reduce((s, monto) => s + (monto ?? 0), 0);
+    return { ...toTurnoDTO(t), totalVendido, ventasPorMetodo };
+  });
 }
 
 export async function listarMovimientos(filtros: {
@@ -218,7 +343,7 @@ export async function registrarVentaPedido(
     {
       tipo: "INGRESO",
       categoria: "VENTA",
-      concepto: `Venta pedido #${pedido.folio}`,
+      concepto: `Venta ticket #${pedido.numeroTicket}`,
       monto: pedido.total,
       metodoPago: pedido.metodoPago,
     },

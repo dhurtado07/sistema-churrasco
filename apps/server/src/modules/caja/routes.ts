@@ -7,10 +7,14 @@ import {
   CajaValidationError,
   cerrarTurno,
   listarMovimientos,
+  listarTurnos,
+  obtenerResumenTurno,
   obtenerTurnoActivo,
   registrarMovimientoManual,
 } from "./service.js";
+import { prisma } from "../../db.js";
 import { realtime } from "../../ws/socket.js";
+import { contarPedidosSinEntregarDelTurno, entregarPedidosDelTurno } from "../pedidos/service.js";
 
 function manejarErrorCaja(error: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
   if (error instanceof CajaValidationError) return reply.code(409).send({ error: error.message });
@@ -42,6 +46,20 @@ export async function cajaRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.get(
+    "/caja/turnos/:id/resumen",
+    { preHandler: [fastify.requireRole("cajero", "admin")] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      try {
+        const resumen = await obtenerResumenTurno(id);
+        return { ...resumen, pedidosSinEntregar: await contarPedidosSinEntregarDelTurno(id) };
+      } catch (error) {
+        return manejarErrorCaja(error, reply);
+      }
+    },
+  );
+
   fastify.patch(
     "/caja/turnos/:id/cerrar",
     { preHandler: [fastify.requireRole("cajero", "admin")] },
@@ -51,13 +69,35 @@ export async function cajaRoutes(fastify: FastifyInstance) {
       if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
       try {
-        const turno = await cerrarTurno(id, request.user.sub, parsed.data.efectivoContado, parsed.data.notaCierre);
+        // Cerrar el turno y dar por entregado lo pendiente son todo-o-nada: si
+        // lo segundo fallara, el turno quedaría cerrado (sin poder reintentar)
+        // con sus pedidos pendientes para siempre.
+        const { turno, entregados } = await prisma.$transaction(async (tx) => {
+          const turno = await cerrarTurno(
+            id,
+            request.user.sub,
+            parsed.data.efectivoContado,
+            parsed.data.notaCierre,
+            parsed.data.otrosMetodosContados,
+            tx,
+          );
+          return { turno, entregados: await entregarPedidosDelTurno(id, tx) };
+        });
+        for (const pedido of entregados) {
+          realtime.pedidoActualizado(pedido);
+          realtime.pedidoEntregado(pedido);
+        }
         return turno;
       } catch (error) {
         return manejarErrorCaja(error, reply);
       }
     },
   );
+
+  fastify.get("/caja/turnos", { preHandler: [fastify.requireRole("cajero", "admin")] }, async (request) => {
+    const { desde, hasta } = request.query as { desde?: string; hasta?: string };
+    return listarTurnos({ desde: desde ? new Date(desde) : undefined, hasta: hasta ? new Date(hasta) : undefined });
+  });
 
   fastify.get("/caja/movimientos", { preHandler: [fastify.requireRole("cajero", "admin")] }, async (request) => {
     const { turnoId, desde, hasta } = request.query as { turnoId?: string; desde?: string; hasta?: string };

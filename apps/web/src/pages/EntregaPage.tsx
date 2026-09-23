@@ -82,6 +82,8 @@ export function EntregaPage() {
     }
   }
 
+  const colaVisible = configuracion.entregaHabilitada ? cola : [];
+
   return (
     <div className="min-h-dvh bg-neutral-100">
       <EstacionHeader titulo="Entrega" />
@@ -90,30 +92,31 @@ export function EntregaPage() {
         <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-amber-800 sm:mx-4">
           <IconAlerta width={20} height={20} className="mt-0.5 shrink-0" />
           <p className="text-sm font-medium">
-            Este módulo está desactivado por el administrador — no van a llegar pedidos nuevos acá hasta que se
-            vuelva a activar en Configuración.
+            Este módulo está desactivado por el administrador — no se muestran pedidos acá hasta que se vuelva a
+            activar en Configuración.
           </p>
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
-        {cola.length === 0 && (
+        {/* Apagado: no se muestra ningún pedido (ya lo avisa el cartel de arriba). */}
+        {colaVisible.length === 0 && configuracion.entregaHabilitada && (
           <p className="col-span-full text-center text-base text-neutral-400">
             No hay pedidos en camino.
           </p>
         )}
 
-        {/* El número grande es el folio del ticket, no la posición en la
+        {/* El número grande es el número de ticket del turno, no la posición en la
             lista — mostrar "1, 2, 3…" según el orden de la cola confundía:
             en cuanto se atendía el primero, el siguiente pasaba a ser "1"
             también, pareciendo que era el mismo que ya se había atendido. */}
-        {cola.map((pedido) => {
+        {colaVisible.map((pedido) => {
           const listo = listoParaEntregar(pedido);
           return (
             <article key={pedido.id} className="overflow-hidden rounded-2xl border-2 border-neutral-900 bg-white shadow-xl">
               <div className={`flex items-center gap-3 px-4 py-3 ${listo ? "bg-emerald-700" : "bg-neutral-900"}`}>
                 <div className="min-w-0">
-                  <p className="text-3xl font-black text-white">#{pedido.folio}</p>
+                  <p className="text-3xl font-black text-white">#{pedido.numeroTicket}</p>
                   <p className={`flex items-center gap-1 text-sm ${listo ? "text-emerald-100" : "text-neutral-300"}`}>
                     {pedido.tipoConsumo === "LOCAL" ? (
                       <IconMesa width={14} height={14} />
@@ -146,7 +149,7 @@ export function EntregaPage() {
                   </div>
                 ) : (
                   <p className="mb-3 text-base text-neutral-400">
-                    Sin cliente registrado — llamar por el ticket #{pedido.folio}.
+                    Sin cliente registrado — llamar por el ticket #{pedido.numeroTicket}.
                   </p>
                 )}
 
@@ -221,7 +224,7 @@ export function EntregaPage() {
           pregunta={
             pedidoAConfirmar.tipoConsumo === "LOCAL"
               ? `¿Ya le llevaste el pedido a la mesa ${pedidoAConfirmar.mesa ?? "?"}${pedidoAConfirmar.clienteNombre ? ` (${pedidoAConfirmar.clienteNombre})` : ""}?`
-              : `¿Ya le entregaste el pedido a ${pedidoAConfirmar.clienteNombre ?? "el cliente"}? Verificá que te haya dado el ticket #${pedidoAConfirmar.folio}.`
+              : `¿Ya le entregaste el pedido a ${pedidoAConfirmar.clienteNombre ?? "el cliente"}? Verificá que te haya dado el ticket #${pedidoAConfirmar.numeroTicket}.`
           }
           textoConfirmar="Sí, ya se entregó"
           error={error}

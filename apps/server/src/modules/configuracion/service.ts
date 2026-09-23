@@ -10,6 +10,7 @@ function toDTO(row: {
   parrillaHabilitada: boolean;
   entregaHabilitada: boolean;
   mesaHabilitada: boolean;
+  ciHabilitado: boolean;
   nombreNegocio: string;
   direccion: string | null;
   telefono: string | null;
@@ -26,6 +27,7 @@ function toDTO(row: {
     parrillaHabilitada: row.parrillaHabilitada,
     entregaHabilitada: row.entregaHabilitada,
     mesaHabilitada: row.mesaHabilitada,
+    ciHabilitado: row.ciHabilitado,
     nombreNegocio: row.nombreNegocio,
     direccion: row.direccion,
     telefono: row.telefono,

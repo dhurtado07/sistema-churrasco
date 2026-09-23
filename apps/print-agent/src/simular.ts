@@ -12,6 +12,7 @@ import { construirTicketEscPos, construirTicketTexto, NEGOCIO_POR_DEFECTO } from
 // Pedido de ejemplo con varios ítems y extras (el caso más "cargado").
 const pedido = {
   folio: 128,
+  numeroTicket: 7,
   creadoEn: new Date().toISOString(),
   clienteNombre: "Juan Perez",
   clienteCarnet: null,

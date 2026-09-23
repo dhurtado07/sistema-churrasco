@@ -10,6 +10,7 @@ const DEFAULT: Configuracion = {
   parrillaHabilitada: true,
   entregaHabilitada: true,
   mesaHabilitada: true,
+  ciHabilitado: false,
   nombreNegocio: "BRASA ARISP",
   direccion: null,
   telefono: null,

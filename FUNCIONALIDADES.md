@@ -27,14 +27,22 @@ público en la web. Es de un solo negocio (no multi-sucursal, no multi-tenant).
 
 ### Caja / POS (`/caja`)
 - Arma el pedido desde el menú: producto + cantidad + extras.
-- Asocia un cliente opcional (nombre/carnet), con autocompletado buscando en
-  el directorio de clientes.
-- Elige consumo en local (mesa obligatoria) o para llevar.
+- Asocia un cliente: nombre siempre obligatorio, con autocompletado buscando
+  en el directorio de clientes. El campo CI/carnet es opcional y su
+  visibilidad se controla desde Configuración (algunos negocios no lo piden).
+- Elige consumo en local (mesa obligatoria si Configuración la tiene
+  habilitada) o para llevar.
 - **Método de pago** (efectivo/tarjeta/transferencia/QR) al cobrar.
 - Marca como pagado → dispara ticket digital en pantalla (con nombre del
   negocio) + impresión térmica automática + registro automático del ingreso
   en el libro de caja.
 - Botón "Reimprimir térmica" si la impresora falló (no bloquea el cobro).
+- **Número de ticket por turno:** arranca en 1 cada vez que se abre caja. El
+  identificador interno del pedido (folio) es aparte y nunca se repite.
+- **Cerrar caja:** todo pedido del turno que siga pendiente se marca como
+  entregado (menos los anulados); el modal de cierre avisa cuántos son. Con
+  cocina, parrilla y entrega apagadas los pedidos quedan pendientes durante el
+  turno, así se puede anular una devolución antes de cerrar.
 
 ### Cocina y Parrilla (`/cocina`, `/parrilla`)
 - Colas FIFO independientes de pedidos pagados, en tiempo real (sin F5).

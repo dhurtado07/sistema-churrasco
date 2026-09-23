@@ -97,9 +97,12 @@ export const itemPedidoInputSchema = z.object({
 
 // La mesa es obligatoria para consumo en local SOLO si el negocio la usa
 // (Configuración > mesaHabilitada — algunos restaurantes no manejan mesas).
-// Como esa validación depende de la config guardada en la base, no se puede
-// resolver acá con un simple .refine() estático — se hace en
-// pedidos/service.ts#asegurarMesaValida, con la config ya cargada.
+// El nombre del cliente es siempre obligatorio; el CI/carnet nunca lo es
+// (Configuración > ciHabilitado solo decide si Caja muestra o no ese campo).
+// Como la validación de mesa/nombre depende de la config guardada en la base
+// (o de resolver clienteId a un cliente existente), no se puede resolver acá
+// con un simple .refine() estático — se hace en pedidos/service.ts
+// (asegurarMesaValida, asegurarNombreClienteValido), con la config ya cargada.
 export const crearPedidoSchema = z.object({
   clienteId: z.string().min(1).optional(),
   clienteNombre: z.string().min(1).optional(),
@@ -133,6 +136,7 @@ export const actualizarConfiguracionSchema = z.object({
   parrillaHabilitada: z.boolean().optional(),
   entregaHabilitada: z.boolean().optional(),
   mesaHabilitada: z.boolean().optional(),
+  ciHabilitado: z.boolean().optional(),
   nombreNegocio: z.string().min(1).optional(),
   direccion: z.string().min(1).nullable().optional(),
   telefono: z.string().min(1).nullable().optional(),
@@ -155,6 +159,15 @@ export const abrirTurnoSchema = z.object({
 
 export const cerrarTurnoSchema = z.object({
   efectivoContado: z.number().nonnegative(),
+  // Lo que el cajero verificó a mano en su app para los medios que no son
+  // efectivo (ej. { QR: 45 }) — opcional: solo los que quiera verificar.
+  otrosMetodosContados: z
+    .object({
+      TARJETA: z.number().nonnegative().optional(),
+      TRANSFERENCIA: z.number().nonnegative().optional(),
+      QR: z.number().nonnegative().optional(),
+    })
+    .optional(),
   notaCierre: z.string().min(1).optional(),
 });
 

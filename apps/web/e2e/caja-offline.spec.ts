@@ -15,6 +15,7 @@ test("cobrar sin conexión guarda la venta y se sincroniza sola al volver", asyn
   await page.waitForTimeout(500); // que el socket termine de conectar y el menú se cachee
 
   await page.click("text=Churrasco Sencillo");
+  await page.fill('input[placeholder="Nombre del cliente"]', "Cliente de prueba");
   await page.click("text=Para llevar");
   const botonCobrar = page.getByRole("button", { name: /marcar como pagado/i });
   await expect(botonCobrar).toBeEnabled();
@@ -64,6 +65,7 @@ test("una venta offline se sincroniza igual aunque su turno ya se haya cerrado",
   await page.waitForTimeout(500);
 
   await page.click("text=Churrasco Sencillo");
+  await page.fill('input[placeholder="Nombre del cliente"]', "Cliente de prueba");
   await page.click("text=Para llevar");
 
   await context.setOffline(true);

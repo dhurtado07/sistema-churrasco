@@ -1,6 +1,7 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Rol } from "shared";
 import { API_URL } from "./env";
+import { registrarAlExpirarSesion } from "./api";
 
 export interface SesionUsuario {
   id: string;
@@ -28,13 +29,33 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Lee el `exp` del JWT sin verificarlo (la verificación real la hace el
+ * servidor) — solo sirve para no seguir mostrando una sesión que ya venció. */
+function tokenVencido(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now();
+  } catch {
+    return false;
+  }
+}
+
+const SIN_SESION: AuthState = { token: null, usuario: null };
+
 function leerEstadoGuardado(): AuthState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { token: null, usuario: null };
-    return JSON.parse(raw) as AuthState;
+    if (!raw) return SIN_SESION;
+    const guardado = JSON.parse(raw) as AuthState;
+    // Sin conexión no se descarta: Caja tiene que poder seguir cobrando
+    // offline aunque el token haya vencido; se revisa apenas vuelva la señal.
+    if (guardado.token && navigator.onLine && tokenVencido(guardado.token)) {
+      localStorage.removeItem(STORAGE_KEY);
+      return SIN_SESION;
+    }
+    return guardado;
   } catch {
-    return { token: null, usuario: null };
+    return SIN_SESION;
   }
 }
 
@@ -82,7 +103,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => actualizarSesion({ token: null, usuario: null });
+  const logout = () => actualizarSesion(SIN_SESION);
+
+  // Un equipo que queda abierto de un día para otro tiene un token vencido:
+  // sin esto seguía mostrando datos viejos (menú/turno en caché) hasta cerrar
+  // sesión a mano. Se cierra sola al detectarlo, ya sea por el reloj o porque
+  // el servidor respondió 401 (ver api.ts).
+  useEffect(() => {
+    const expirar = () => actualizarSesion(SIN_SESION);
+    registrarAlExpirarSesion(expirar);
+    const revisar = () => {
+      if (state.token && navigator.onLine && tokenVencido(state.token)) expirar();
+    };
+    revisar();
+    const intervalo = setInterval(revisar, 60_000);
+    document.addEventListener("visibilitychange", revisar);
+    window.addEventListener("focus", revisar);
+    window.addEventListener("online", revisar);
+    return () => {
+      registrarAlExpirarSesion(null);
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", revisar);
+      window.removeEventListener("focus", revisar);
+      window.removeEventListener("online", revisar);
+    };
+  }, [state.token]);
 
   const value = useMemo(
     () => ({ ...state, login, logout, cargando, error }),

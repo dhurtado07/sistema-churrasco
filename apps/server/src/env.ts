@@ -6,6 +6,13 @@ function required(name: string): string {
   return value;
 }
 
+/** Un valor mal escrito (vacío, texto) no puede apagar ni bloquear el límite
+ * de intentos de login: cae al default. */
+function enteroPositivo(valor: string | undefined, porDefecto: number): number {
+  const n = Number(valor);
+  return Number.isInteger(n) && n > 0 ? n : porDefecto;
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   jwtSecret: required("JWT_SECRET"),
@@ -18,6 +25,10 @@ export const env = {
   // esto, el mapa completo de la API queda visible a cualquiera en internet.
   // Los defaults solo aplican si no se configuran (dev local); en
   // producción se sobreescriben con valores reales en .env.prod.
+  // Intentos de login por minuto (anti fuerza bruta). En producción se deja el
+  // default; en desarrollo se puede subir para correr la suite e2e completa,
+  // que inicia sesión decenas de veces seguidas.
+  loginRateLimitMax: enteroPositivo(process.env.LOGIN_RATE_LIMIT_MAX, 20),
   docsUser: process.env.DOCS_USER ?? "admin",
   docsPassword: process.env.DOCS_PASSWORD ?? "admin",
 };

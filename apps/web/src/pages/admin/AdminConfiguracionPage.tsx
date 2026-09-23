@@ -23,7 +23,7 @@ import {
 type ClaveModulo = "cocinaHabilitada" | "parrillaHabilitada" | "entregaHabilitada";
 // Cualquier campo booleano de Configuracion que se prenda/apague con el
 // mismo switch reutilizable (módulos de estación, mesa, métodos de pago).
-type ClaveToggle = ClaveModulo | "mesaHabilitada" | keyof MetodosPagoHabilitados;
+type ClaveToggle = ClaveModulo | "mesaHabilitada" | "ciHabilitado" | keyof MetodosPagoHabilitados;
 
 interface MetodosPagoHabilitados {
   pagoEfectivoHabilitado: boolean;
@@ -97,14 +97,14 @@ function describirFlujo(config: Configuracion): string {
   if (config.parrillaHabilitada) pasos.push("Parrilla");
   if (config.entregaHabilitada) pasos.push("Entrega");
   if (pasos.length === 1) {
-    return "Caja → pedido queda cobrado y cerrado de una — sin cocina, parrilla ni entrega digital. Los meseros se encargan de todo.";
+    return "Caja → el pedido queda pendiente (se puede editar o anular, por ejemplo si el cliente pide la devolución) y al cerrar caja todo lo pendiente del turno se marca como entregado. Sin cocina, parrilla ni entrega digital.";
   }
   const ultimo = pasos[pasos.length - 1];
   return (
     pasos.join(" → ") +
     (ultimo === "Entrega"
       ? " → listo, entregado."
-      : ` → en cuanto ${ultimo.toLowerCase()} marca "listo", el pedido queda cerrado de una (no hay entrega digital habilitada).`)
+      : ` → en cuanto ${ultimo.toLowerCase()} marca "listo", el pedido queda cerrado de una. Si nadie lo marca, se da por entregado al cerrar caja (no hay entrega digital habilitada).`)
   );
 }
 
@@ -296,6 +296,21 @@ export function AdminConfiguracionPage() {
               activo={configuracion.mesaHabilitada}
               disabled={guardando === "mesaHabilitada"}
               onClick={() => alternar("mesaHabilitada")}
+            />
+          </li>
+          <li className="flex items-center gap-3 py-3">
+            <IconIdCard width={20} height={20} className="shrink-0 text-neutral-500" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-neutral-900">CI / Carnet del cliente</p>
+              <p className="text-xs text-neutral-500">
+                Apagalo si tu negocio no necesita pedir el CI — Caja deja de mostrar ese campo. El nombre del cliente
+                siempre se pide, aparte, y nunca es obligatorio llenar el CI aunque esté activo.
+              </p>
+            </div>
+            <ToggleSwitch
+              activo={configuracion.ciHabilitado}
+              disabled={guardando === "ciHabilitado"}
+              onClick={() => alternar("ciHabilitado")}
             />
           </li>
         </ul>

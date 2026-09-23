@@ -1,4 +1,4 @@
-import type { ExtraSeleccionado, Pedido } from "shared";
+import type { Configuracion, ExtraSeleccionado, Pedido } from "shared";
 
 /** "Chorizo" si es una sola unidad, "2x Chorizo" si son varias — para que
  * cocina/parrilla sepan cuántas porciones preparar de verdad, no solo que
@@ -36,9 +36,14 @@ export const ESTADO_LABEL: Record<Pedido["estado"], string> = {
 /** Solo se puede editar/cancelar mientras nadie en cocina o parrilla empezó a
  * prepararlo — mismo criterio que aplica el servidor. La usan Admin (editar/
  * anular) y Caja (anular) para saber si mostrar esos botones. */
-export function puedeModificarse(pedido: Pedido): boolean {
+export function puedeModificarse(
+  pedido: Pedido,
+  config: Pick<Configuracion, "cocinaHabilitada" | "parrillaHabilitada">,
+): boolean {
   if (pedido.estado !== "PAGADO") return false;
-  if (pedido.cocinaLista) return false;
-  if (pedido.requiereParrilla && pedido.parrillaLista) return false;
+  // Un módulo deshabilitado nace con su flag en true sin que nadie haya empezado
+  // nada — solo cuenta el avance de los módulos habilitados.
+  if (config.cocinaHabilitada && pedido.cocinaLista) return false;
+  if (config.parrillaHabilitada && pedido.requiereParrilla && pedido.parrillaLista) return false;
   return true;
 }

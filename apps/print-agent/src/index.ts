@@ -35,10 +35,10 @@ async function imprimirConReintento(pedido: Pedido, negocio: NegocioInfo, intent
       await imprimirTicket(pedido, negocio);
       return;
     } catch (error) {
-      console.error(`[print-agent] intento ${intento}/${intentos} falló para ticket #${pedido.folio}:`, (error as Error).message);
+      console.error(`[print-agent] intento ${intento}/${intentos} falló para ticket #${pedido.numeroTicket ?? pedido.folio}:`, (error as Error).message);
       if (intento === intentos) {
         console.error(
-          `[print-agent] ticket #${pedido.folio} NO se pudo imprimir. El ticket digital sigue disponible en caja para reintentar o reimprimir.`,
+          `[print-agent] ticket #${pedido.numeroTicket ?? pedido.folio} NO se pudo imprimir. El ticket digital sigue disponible en caja para reintentar o reimprimir.`,
         );
       } else {
         await new Promise((resolve) => setTimeout(resolve, 1000 * intento));
@@ -71,7 +71,7 @@ async function main() {
   });
 
   socket.on(SOCKET_EVENTS.TICKET_IMPRIMIR, (pedido: Pedido) => {
-    console.log(`[print-agent] ticket #${pedido.folio} recibido`);
+    console.log(`[print-agent] ticket #${pedido.numeroTicket ?? pedido.folio} recibido`);
     void imprimirConReintento(pedido, negocio);
   });
 }

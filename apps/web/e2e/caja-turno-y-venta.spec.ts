@@ -35,6 +35,8 @@ test.describe("Caja: turno de caja y venta", () => {
     await expect(page.getByText(/no hay un turno de caja abierto/i)).not.toBeVisible();
 
     await page.click("text=Churrasco Sencillo");
+    // El nombre del cliente es obligatorio para cobrar (ver CajaPage#cobrar).
+    await page.fill('input[placeholder="Nombre del cliente"]', "Cliente de prueba");
     // "Para llevar" evita el requisito de número de mesa — lo que importa acá
     // es probar el gate del turno, no el flujo de mesa.
     await page.click("text=Para llevar");

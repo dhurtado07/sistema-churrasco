@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CajaTurno, Configuracion, CrearPedidoInput, Extra, MetodoPago, Pedido, Producto, TipoConsumo } from "shared";
-import { SOCKET_EVENTS } from "shared";
+import { SOCKET_EVENTS, codigoPedido } from "shared";
 import { EstacionHeader } from "../components/EstacionHeader";
 import { Modal } from "../components/Modal";
 import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
 import { TicketModal } from "../components/TicketModal";
 import { AbrirTurnoModal } from "../components/AbrirTurnoModal";
+import { CerrarTurnoModal } from "../components/CerrarTurnoModal";
+import { BannerTurno } from "../components/BannerTurno";
 import { useAuth } from "../lib/auth";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { apiFetch, ApiError } from "../lib/api";
@@ -80,6 +82,7 @@ export function CajaPage() {
   // pedido y recién se entere del problema al momento de cobrar.
   const [turnoActivo, setTurnoActivo] = useState<CajaTurno | null | undefined>(undefined);
   const [modalAbrirTurno, setModalAbrirTurno] = useState(false);
+  const [modalCerrarTurno, setModalCerrarTurno] = useState(false);
 
   function cargarTurno() {
     apiFetch<CajaTurno | null>("/caja/turnos/activo", token)
@@ -151,7 +154,7 @@ export function CajaPage() {
     setReimprimiendo(pedido.folio);
     try {
       await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
-      setAvisoReimpresion(`Ticket #${pedido.folio} reenviado a la impresora`);
+      setAvisoReimpresion(`Ticket #${pedido.numeroTicket} reenviado a la impresora`);
       setTimeout(() => setAvisoReimpresion(null), 3000);
     } catch (err) {
       setAvisoReimpresion(err instanceof ApiError ? err.message : "No se pudo reimprimir el ticket");
@@ -243,9 +246,10 @@ export function CajaPage() {
     return {
       id: `offline-${crypto.randomUUID()}`,
       folio: 0,
+      numeroTicket: 0,
       clienteId: null,
       clienteNombre: clienteNombre.trim() || null,
-      clienteCarnet: clienteCarnet.trim() || null,
+      clienteCarnet: configuracion.ciHabilitado ? clienteCarnet.trim() || null : null,
       tipoConsumo,
       mesa: tipoConsumo === "LOCAL" && configuracion.mesaHabilitada ? mesa.trim() : null,
       items: carritoAlCobrar.map((linea) => ({
@@ -280,6 +284,10 @@ export function CajaPage() {
 
   async function cobrar() {
     if (carrito.length === 0 || !turnoActivo) return;
+    if (!clienteNombre.trim()) {
+      setError("Indicá el nombre del cliente antes de cobrar.");
+      return;
+    }
     if (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim()) {
       setError("Indicá el número de mesa antes de cobrar.");
       return;
@@ -289,7 +297,7 @@ export function CajaPage() {
 
     const body: CrearPedidoInput = {
       clienteNombre: clienteNombre.trim() || undefined,
-      clienteCarnet: clienteCarnet.trim() || undefined,
+      clienteCarnet: configuracion.ciHabilitado ? clienteCarnet.trim() || undefined : undefined,
       tipoConsumo,
       mesa: tipoConsumo === "LOCAL" && configuracion.mesaHabilitada ? mesa.trim() : undefined,
       metodoPago,
@@ -354,6 +362,12 @@ export function CajaPage() {
           la interfaz de venta completa detrás. */}
       <div className="no-imprimir">
       <EstacionHeader titulo="Caja" />
+      <BannerTurno
+        turno={turnoActivo}
+        online={online}
+        onAbrir={() => setModalAbrirTurno(true)}
+        onCerrar={() => setModalCerrarTurno(true)}
+      />
 
       <div className="flex flex-wrap items-center justify-end gap-2 px-3 pt-3 sm:px-4">
         {ventasOfflinePendientes.length > 0 && (
@@ -595,26 +609,29 @@ export function CajaPage() {
           </ul>
 
           <div className="border-t border-neutral-200 pt-3">
-            <label className="mb-1 block text-xs font-medium text-neutral-600">
-              Cliente (opcional)
-            </label>
+            <label className="mb-1 block text-xs font-medium text-neutral-600">Cliente</label>
             {/* Texto libre, no un registro formal — Caja solo necesita algo
                 para llamar al cliente y que salga en el ticket, sin tener que
-                buscarlo ni crearlo en la base de clientes. */}
+                buscarlo ni crearlo en la base de clientes. El nombre siempre
+                es obligatorio (ver cobrar()); el CI nunca lo es, y el campo ni
+                se muestra si Configuración > ciHabilitado está apagado. */}
             <IconInput
               icon={IconUser}
               className="mb-2"
               placeholder="Nombre del cliente"
               value={clienteNombre}
               onChange={(e) => setClienteNombreInput(e.target.value)}
+              required
             />
-            <IconInput
-              icon={IconIdCard}
-              className="mb-3"
-              placeholder="CI / Carnet (opcional)"
-              value={clienteCarnet}
-              onChange={(e) => setClienteCarnetInput(e.target.value)}
-            />
+            {configuracion.ciHabilitado && (
+              <IconInput
+                icon={IconIdCard}
+                className="mb-3"
+                placeholder="CI / Carnet (opcional)"
+                value={clienteCarnet}
+                onChange={(e) => setClienteCarnetInput(e.target.value)}
+              />
+            )}
 
             <div className="mb-3 grid grid-cols-2 gap-2">
               {(["LOCAL", "LLEVAR"] as const).map((opcion) => {
@@ -681,6 +698,7 @@ export function CajaPage() {
                 carrito.length === 0 ||
                 enviando ||
                 !turnoActivo ||
+                !clienteNombre.trim() ||
                 (tipoConsumo === "LOCAL" && configuracion.mesaHabilitada && !mesa.trim())
               }
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-base font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
@@ -810,6 +828,18 @@ export function CajaPage() {
           }}
         />
       )}
+      {modalCerrarTurno && turnoActivo && (
+        <CerrarTurnoModal
+          token={token}
+          turno={turnoActivo}
+          onCerrar={() => setModalCerrarTurno(false)}
+          onListo={() => {
+            setModalCerrarTurno(false);
+            cargarTurno();
+            cargarPendientes();
+          }}
+        />
+      )}
       {modalAbrirTurno && (
         <AbrirTurnoModal
           token={token}
@@ -857,7 +887,10 @@ export function CajaPage() {
               {pedidosPendientes.map((pedido) => (
                 <li key={pedido.id} className="rounded-lg border border-neutral-200 p-3 text-sm">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="font-bold text-neutral-900">Ticket #{pedido.folio}</span>
+                    <span className="font-bold text-neutral-900">
+                      Ticket #{pedido.numeroTicket}
+                      <span className="ml-2 text-xs font-normal text-neutral-500">{codigoPedido(pedido.folio)}</span>
+                    </span>
                     <span className="font-semibold text-neutral-900">Bs {formatBs(pedido.total)}</span>
                   </div>
                   <p className="mb-2 text-xs text-neutral-500">
@@ -878,7 +911,7 @@ export function CajaPage() {
                       <IconRefresh width={14} height={14} />
                       {reimprimiendo === pedido.folio ? "Enviando…" : "Reimprimir"}
                     </button>
-                    {puedeModificarse(pedido) ? (
+                    {puedeModificarse(pedido, configuracion) ? (
                       <button
                         onClick={() => {
                           setErrorAnular(null);
@@ -906,7 +939,7 @@ export function CajaPage() {
         <ConfirmarPedidoModal
           pedido={pedidoAAnular}
           titulo="Anular pedido"
-          pregunta={`¿Anular el ticket #${pedidoAAnular.folio}? Esto no se puede deshacer.`}
+          pregunta={`¿Anular el ticket #${pedidoAAnular.numeroTicket}? Esto no se puede deshacer.`}
           textoConfirmar="Sí, anular"
           destructivo
           error={errorAnular}

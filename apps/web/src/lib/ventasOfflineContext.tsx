@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { CrearPedidoInput, Pedido } from "shared";
 import { useAuth } from "./auth";
 import { useConectividad } from "./conectividadContext";
-import { apiFetch, ApiError } from "./api";
+import { apiFetch, ApiError, SesionVencidaError } from "./api";
 import {
   encolarVentaOffline,
   leerColaOffline,
@@ -59,6 +59,10 @@ export function VentasOfflineProvider({ children }: { children: ReactNode }) {
           quitarDeColaOffline(venta.id);
           setPendientes(leerColaOffline());
         } catch (err) {
+          // Token vencido mientras se estaba offline: NO es un rechazo de la venta.
+          // Se corta sin tocar la cola; al volver a iniciar sesión (cambia el
+          // token) esta misma función corre de nuevo y las manda.
+          if (err instanceof SesionVencidaError) break;
           if (err instanceof ApiError) {
             // El servidor respondió pero rechazó la venta (ej. el turno de
             // esa venta ya no existe, o un producto se borró mientras tanto)

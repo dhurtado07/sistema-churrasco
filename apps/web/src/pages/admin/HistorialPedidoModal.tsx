@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ItemAuditado, Pedido, PedidoAuditoria } from "shared";
+import { codigoPedido } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import { formatBs } from "../../lib/format";
@@ -32,7 +33,7 @@ export function HistorialPedidoModal({ pedido, onCerrar }: { pedido: Pedido; onC
   }, [pedido.folio, token]);
 
   return (
-    <Modal titulo={`Historial del ticket #${pedido.folio}`} onCerrar={onCerrar}>
+    <Modal titulo={`Historial del ticket #${pedido.numeroTicket} (${codigoPedido(pedido.folio)})`} onCerrar={onCerrar}>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {!registros && !error && <p className="text-sm text-neutral-400">Cargando…</p>}
       {registros && registros.length === 0 && (

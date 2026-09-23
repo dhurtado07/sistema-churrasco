@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Pedido } from "shared";
-import { SOCKET_EVENTS } from "shared";
+import { SOCKET_EVENTS, codigoPedido, coincideConCodigo } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
@@ -122,7 +122,8 @@ export function AdminPedidosPage() {
     const termino = busqueda.trim().toLowerCase();
     if (!termino) return true;
     return (
-      String(pedido.folio).includes(termino) ||
+      String(pedido.numeroTicket).includes(termino) ||
+      coincideConCodigo(pedido.folio, termino) ||
       pedido.clienteNombre?.toLowerCase().includes(termino) ||
       pedido.mesa?.toLowerCase().includes(termino)
     );
@@ -144,7 +145,7 @@ export function AdminPedidosPage() {
     setReimprimiendo(pedido.folio);
     try {
       await apiFetch(`/pedidos/${pedido.folio}/reimprimir`, token, { method: "POST" });
-      setAvisoReimpresion(`Ticket #${pedido.folio} reenviado a la impresora`);
+      setAvisoReimpresion(`Ticket #${pedido.numeroTicket} reenviado a la impresora`);
       setTimeout(() => setAvisoReimpresion(null), 3000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo reimprimir el ticket");
@@ -229,9 +230,9 @@ export function AdminPedidosPage() {
           <article key={pedido.id} className="rounded-2xl border-2 border-neutral-900 bg-white p-4 shadow-xl">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span className="font-bold text-neutral-900">Ticket #{pedido.folio}</span>
+                <span className="font-bold text-neutral-900">Ticket #{pedido.numeroTicket}</span>
                 <span className="ml-2 text-xs text-neutral-500">
-                  {formatoFechaHoraBO(pedido.creadoEn)}
+                  {codigoPedido(pedido.folio)} · {formatoFechaHoraBO(pedido.creadoEn)}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -307,7 +308,7 @@ export function AdminPedidosPage() {
                 </button>
                 {tab === "pendientes" && (
                 <>
-                  {puedeModificarse(pedido) ? (
+                  {puedeModificarse(pedido, configuracion) ? (
                     <>
                       <button
                         onClick={() => setPedidoEditando(pedido)}
@@ -361,7 +362,7 @@ export function AdminPedidosPage() {
         <ConfirmarPedidoModal
           pedido={pedidoACancelar}
           titulo="Anular pedido"
-          pregunta={`¿Anular el ticket #${pedidoACancelar.folio}? Esto no se puede deshacer.`}
+          pregunta={`¿Anular el ticket #${pedidoACancelar.numeroTicket}? Esto no se puede deshacer.`}
           textoConfirmar="Sí, anular"
           destructivo
           error={error}

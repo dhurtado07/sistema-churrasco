@@ -1,6 +1,21 @@
 import type { Pedido } from "shared";
 import { EscPosBuilder } from "./escpos.js";
 
+/** Número de ticket que ve el cliente (reinicia en 1 cada turno). Si el
+ * servidor es una versión anterior y no lo manda, se usa el folio: así el
+ * ticket nunca sale con "undefined". */
+export function numeroDeTicket(pedido: Pedido): number {
+  return pedido.numeroTicket ?? pedido.folio;
+}
+
+/** Código único del pedido (ej. COD142), igual al que muestra el sistema.
+ * Se arma acá y no se importa de "shared" a propósito: el agente solo usa
+ * "shared" para tipos (se borran al compilar), así que puede instalarse en la
+ * PC de caja sin ese paquete. */
+export function codigoDePedido(pedido: Pedido): string {
+  return `COD${pedido.folio}`;
+}
+
 const ANCHO = 48; // caracteres por línea — Font A en rollo de 80mm (Epson TM-T20IV-L)
 
 export interface NegocioInfo {
@@ -39,7 +54,8 @@ export function construirTicketEscPos(pedido: Pedido, negocio: NegocioInfo = NEG
   builder.doubleSize(false).bold(false);
   if (negocio.direccion) builder.line(negocio.direccion);
   if (negocio.telefono) builder.line(`Tel: ${negocio.telefono}`);
-  builder.line(`Ticket #${pedido.folio}`);
+  builder.line(`Ticket #${numeroDeTicket(pedido)}`);
+  builder.line(codigoDePedido(pedido));
   builder.line(fechaHoraLocal(pedido.creadoEn));
   builder.align("left");
   builder.separator("-", ANCHO);
@@ -76,7 +92,8 @@ export function construirTicketTexto(pedido: Pedido, negocio: NegocioInfo = NEGO
   lineas.push(negocio.nombreNegocio);
   if (negocio.direccion) lineas.push(negocio.direccion);
   if (negocio.telefono) lineas.push(`Tel: ${negocio.telefono}`);
-  lineas.push(`Ticket #${pedido.folio}`);
+  lineas.push(`Ticket #${numeroDeTicket(pedido)}`);
+  lineas.push(codigoDePedido(pedido));
   lineas.push(fechaHoraLocal(pedido.creadoEn));
   lineas.push("-".repeat(ANCHO));
   if (pedido.clienteNombre) lineas.push(`Cliente: ${pedido.clienteNombre}`);

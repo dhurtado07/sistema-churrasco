@@ -70,7 +70,11 @@ export interface ItemPedido {
 
 export interface Pedido {
   id: string;
+  /** Identificador único e interno del pedido (URLs, referencias). */
   folio: number;
+  /** Número de ticket que ven el cliente y el personal: reinicia en 1 con
+   * cada turno de caja, así que NO identifica al pedido (se repite entre turnos). */
+  numeroTicket: number;
   clienteId: string | null;
   clienteNombre: string | null;
   clienteCarnet: string | null;
@@ -140,6 +144,7 @@ export interface Configuracion {
   parrillaHabilitada: boolean;
   entregaHabilitada: boolean;
   mesaHabilitada: boolean;
+  ciHabilitado: boolean;
   nombreNegocio: string;
   direccion: string | null;
   telefono: string | null;
@@ -177,6 +182,37 @@ export interface CajaTurno {
   diferencia: number | null;
   notaCierre: string | null;
   cerradoEn: string | null;
+  /** Lo verificado a mano al cerrar para QR/tarjeta/transferencia; null si no
+   * se verificó nada. */
+  conteoOtrosMetodos: ConteoOtrosMetodos | null;
+}
+
+export type ConteoOtrosMetodos = Partial<
+  Record<Exclude<MetodoPago, "EFECTIVO">, { esperado: number; contado: number; diferencia: number }>
+>;
+
+/** Turno con lo vendido en él, por método de pago — para el historial de
+ * turnos (ver cuánto entró por QR, tarjeta, etc., no solo en efectivo). */
+export interface TurnoConVentas extends CajaTurno {
+  totalVendido: number;
+  ventasPorMetodo: Partial<Record<MetodoPago, number>>;
+}
+
+/** Cuentas de un turno de caja, para cerrarlo: qué se vendió (por método de
+ * pago) y cuánto efectivo debería haber físicamente en la caja. */
+export interface ResumenTurno {
+  fondoInicial: number;
+  cantidadVentas: number;
+  totalVendido: number;
+  ventasPorMetodo: { metodoPago: MetodoPago; cantidad: number; total: number }[];
+  ventasEfectivo: number;
+  otrosIngresosEfectivo: number;
+  egresosEfectivo: number;
+  efectivoEsperado: number;
+  /** Lo que el sistema dice que entró por cada medio que no es efectivo (QR,
+   * tarjeta, transferencia) — para que el cajero lo compare con su app. */
+  otrosMetodos: { metodoPago: Exclude<MetodoPago, "EFECTIVO">; esperado: number }[];
+  pedidosSinEntregar: number;
 }
 
 export interface MovimientoCaja {
@@ -192,6 +228,10 @@ export interface MovimientoCaja {
   registradoPorNombre: string;
   anulaMovimientoId: string | null;
   anulado: boolean;
+  /** Estado del pedido al que pertenece la venta (null si no es de un pedido):
+   * distingue un pedido CANCELADO de uno solo editado, que también deja un
+   * movimiento anulado y su reverso. */
+  pedidoEstado: EstadoPedido | null;
   creadoEn: string;
 }
 

@@ -20,6 +20,7 @@ test("pedir el mismo extra dos veces suma cantidad, no lo saca", async ({ page, 
   await page.click("text=Platos");
   await expect(page.getByText("Bs 53,00").first()).toBeVisible(); // 37 + 8*2
 
+  await page.fill('input[placeholder="Nombre del cliente"]', "Cliente de prueba");
   await page.click("text=Para llevar");
   await page.getByRole("button", { name: /marcar como pagado/i }).click();
   await page.getByRole("button", { name: "Sí" }).click();

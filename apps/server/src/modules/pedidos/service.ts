@@ -34,33 +34,46 @@ async function conReintento<T>(fn: () => Promise<T>, intentos = 3): Promise<T> {
  * No todas las churrasquerías usan los mismos módulos (algunas solo cobran y
  * el mesero se encarga de todo; otras usan cocina+parrilla completas; etc. —
  * ver Configuración en el admin). Un módulo deshabilitado se trata como "ya
- * listo" automáticamente, y si con eso el pedido ya está listo por ambas
- * ramas, se cierra en cascada hasta donde los módulos habilitados alcancen:
- * PAGADO -> COMPLETADO (si cocina+parrilla ok) -> ENTREGADO (si además
- * "entrega" está deshabilitada, nadie va a confirmarlo a mano).
+ * listo" (sus flags nacen en true). Si con eso cocina y parrilla ya están
+ * listas y "entrega" sí está habilitada, el pedido nace COMPLETADO.
+ *
+ * Si "entrega" está deshabilitada, el pedido NO se cierra solo al cobrar: se
+ * queda PAGADO (pendiente) para que todavía se pueda editar o anular — ej. el
+ * cliente pide la devolución — y al cerrar caja todo lo pendiente del turno se
+ * marca entregado (ver entregarPedidosDelTurno).
  */
-function resolverEstadoInicial(config: Configuracion, requiereParrilla: boolean) {
+function estadoEntregado() {
   const now = new Date();
+  return {
+    cocinaLista: true,
+    parrillaLista: true,
+    estado: "ENTREGADO" as const,
+    completadoEn: now as Date | null,
+    entregadoEn: now as Date | null,
+  };
+}
+
+export function resolverEstadoInicial(config: Configuracion, requiereParrilla: boolean) {
   const cocinaLista = !config.cocinaHabilitada;
   const parrillaLista = !config.parrillaHabilitada || !requiereParrilla;
 
-  if (!(cocinaLista && parrillaLista)) {
+  const nadieMasLoMarca = cocinaLista && parrillaLista;
+  if (nadieMasLoMarca && config.entregaHabilitada) {
     return {
       cocinaLista,
       parrillaLista,
-      estado: "PAGADO" as const,
-      completadoEn: null as Date | null,
+      estado: "COMPLETADO" as const,
+      completadoEn: new Date() as Date | null,
       entregadoEn: null as Date | null,
     };
   }
 
-  const entregado = !config.entregaHabilitada;
   return {
     cocinaLista,
     parrillaLista,
-    estado: (entregado ? "ENTREGADO" : "COMPLETADO") as "ENTREGADO" | "COMPLETADO",
-    completadoEn: now,
-    entregadoEn: entregado ? now : null,
+    estado: "PAGADO" as const,
+    completadoEn: null as Date | null,
+    entregadoEn: null as Date | null,
   };
 }
 
@@ -75,6 +88,7 @@ export function toPedidoDTO(pedido: PedidoConRelaciones): PedidoDTO {
   return {
     id: String(pedido.id),
     folio: pedido.id,
+    numeroTicket: pedido.numeroTicket,
     clienteId: pedido.clienteId,
     clienteNombre: pedido.clienteNombre,
     clienteCarnet: pedido.clienteCarnet,
@@ -174,19 +188,19 @@ export class PedidoValidationError extends Error {}
  * venta ya ocurrió de verdad cuando ese turno todavía estaba abierto en el
  * equipo, así que solo confirma que ese turno exista y lo usa tal cual,
  * aunque ya se haya cerrado mientras tanto. */
-async function resolverTurnoParaVenta(turnoIdOriginal?: string): Promise<string> {
+async function resolverTurnoParaVenta(turnoIdOriginal?: string): Promise<{ id: string; cerrado: boolean }> {
   if (turnoIdOriginal) {
     const turno = await prisma.cajaTurno.findUnique({ where: { id: turnoIdOriginal } });
     if (!turno) {
       throw new PedidoValidationError("El turno de caja de esta venta (hecha sin conexión) ya no existe.");
     }
-    return turno.id;
+    return { id: turno.id, cerrado: turno.estado !== "ABIERTO" };
   }
   const turnoAbierto = await prisma.cajaTurno.findFirst({ where: { estado: "ABIERTO" } });
   if (!turnoAbierto) {
     throw new PedidoValidationError("No hay un turno de caja abierto — abrilo antes de cobrar.");
   }
-  return turnoAbierto.id;
+  return { id: turnoAbierto.id, cerrado: false };
 }
 
 const CONFIG_POR_METODO_PAGO: Record<CrearPedidoInput["metodoPago"], keyof Configuracion> = {
@@ -207,9 +221,19 @@ function asegurarMetodoPagoHabilitado(config: Configuracion, metodoPago: CrearPe
 
 /** La mesa es obligatoria para consumo en local SOLO si el negocio la usa
  * (algunos restaurantes no manejan número de mesa) — ver Configuración. */
-function asegurarMesaValida(config: Configuracion, input: Pick<CrearPedidoInput, "tipoConsumo" | "mesa">) {
+export function asegurarMesaValida(config: Configuracion, input: Pick<CrearPedidoInput, "tipoConsumo" | "mesa">) {
   if (input.tipoConsumo === "LOCAL" && config.mesaHabilitada && !input.mesa?.trim()) {
     throw new PedidoValidationError("La mesa es obligatoria para pedidos en local.");
+  }
+}
+
+/** El nombre del cliente siempre es obligatorio (a diferencia de mesa/CI, no
+ * depende de ninguna config) — se valida acá y no como .min(1) fijo en el
+ * schema porque el nombre puede venir resuelto de un `clienteId` en vez de
+ * como texto suelto (ver resolverCliente). */
+export function asegurarNombreClienteValido(clienteNombre: string | null) {
+  if (!clienteNombre?.trim()) {
+    throw new PedidoValidationError("El nombre del cliente es obligatorio.");
   }
 }
 
@@ -302,19 +326,41 @@ export async function crearPedido(
     }
   }
 
-  const turnoId = await resolverTurnoParaVenta(input.turnoIdOriginal);
+  const { id: turnoId, cerrado: turnoCerrado } = await resolverTurnoParaVenta(input.turnoIdOriginal);
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
-  const { clienteNombre, clienteCarnet } = await resolverCliente(input);
+  let { clienteNombre, clienteCarnet } = await resolverCliente(input);
   const config = await obtenerConfiguracion();
   asegurarMetodoPagoHabilitado(config, input.metodoPago);
   asegurarMesaValida(config, input);
-  const estadoInicial = resolverEstadoInicial(config, requiereParrilla);
+  // Una venta offline pudo haberse cobrado y guardado en el equipo (encolada
+  // para sincronizar) ANTES de que el nombre del cliente pasara a ser
+  // obligatorio — esa plata ya se cobró de verdad, así que no tiene sentido
+  // rechazar la sincronización y dejarla trabada. Solo para ese caso, se usa
+  // un nombre genérico en vez de la venta normal (online), que si exige el
+  // nombre real desde el formulario.
+  if (input.origenOfflineId && !clienteNombre?.trim()) {
+    clienteNombre = "Cliente (venta offline sin nombre)";
+  }
+  asegurarNombreClienteValido(clienteNombre);
+  // Venta hecha sin conexión que llega cuando su turno ya se cerró: nadie va a
+  // volver a cerrar ese turno, así que nace entregada en vez de quedar
+  // pendiente para siempre.
+  const estadoInicial = turnoCerrado ? estadoEntregado() : resolverEstadoInicial(config, requiereParrilla);
   const creadoEn = input.creadoEnOriginal ? new Date(input.creadoEnOriginal) : undefined;
 
   const pedido = await conReintento(() =>
     prisma.$transaction(async (tx) => {
+      // increment es atómico en la base: dos cobros simultáneos en el mismo
+      // turno nunca reciben el mismo número de ticket.
+      const { ultimoTicket } = await tx.cajaTurno.update({
+        where: { id: turnoId },
+        data: { ultimoTicket: { increment: 1 } },
+        select: { ultimoTicket: true },
+      });
       const creado = await tx.pedido.create({
         data: {
+          turnoId,
+          numeroTicket: ultimoTicket,
           clienteId: input.clienteId ?? null,
           clienteNombre,
           clienteCarnet,
@@ -348,12 +394,19 @@ export async function crearPedido(
 /** Un pedido solo se puede editar/cancelar mientras nadie en cocina o
  * parrilla empezó a prepararlo — evita confusión en planta sobre qué se
  * está preparando. */
-function asegurarPedidoEditable(pedido: { estado: string; cocinaLista: boolean; parrillaLista: boolean; requiereParrilla: boolean }) {
+/** Un módulo deshabilitado deja su flag en true desde que nace el pedido (ver
+ * resolverEstadoInicial): eso no significa que alguien haya empezado nada, así
+ * que solo cuenta el avance de los módulos que sí están habilitados. */
+export function asegurarPedidoEditable(
+  pedido: { estado: string; cocinaLista: boolean; parrillaLista: boolean; requiereParrilla: boolean },
+  config: Pick<Configuracion, "cocinaHabilitada" | "parrillaHabilitada">,
+) {
   if (pedido.estado !== "PAGADO") {
     throw new PedidoValidationError("Este pedido ya no está pendiente, no se puede modificar.");
   }
-  const parrillaYaEmpezada = pedido.requiereParrilla && pedido.parrillaLista;
-  if (pedido.cocinaLista || parrillaYaEmpezada) {
+  const cocinaYaEmpezada = config.cocinaHabilitada && pedido.cocinaLista;
+  const parrillaYaEmpezada = config.parrillaHabilitada && pedido.requiereParrilla && pedido.parrillaLista;
+  if (cocinaYaEmpezada || parrillaYaEmpezada) {
     throw new PedidoValidationError(
       "Cocina o parrilla ya empezaron a preparar este pedido — cancelalo y creá uno nuevo si hace falta corregirlo.",
     );
@@ -363,13 +416,14 @@ function asegurarPedidoEditable(pedido: { estado: string; cocinaLista: boolean; 
 export async function editarPedido(id: number, input: CrearPedidoInput, usuarioId: string): Promise<PedidoDTO> {
   const actual = await prisma.pedido.findUnique({ where: { id }, include: pedidoInclude });
   if (!actual) throw new PedidoValidationError("Pedido no encontrado");
-  asegurarPedidoEditable(actual);
+  const config = await obtenerConfiguracion();
+  asegurarPedidoEditable(actual, config);
 
   const { itemsData, total, requiereParrilla } = await construirItems(input.items);
   const { clienteNombre, clienteCarnet } = await resolverCliente(input);
-  const config = await obtenerConfiguracion();
   asegurarMetodoPagoHabilitado(config, input.metodoPago);
   asegurarMesaValida(config, input);
+  asegurarNombreClienteValido(clienteNombre);
   const estadoInicial = resolverEstadoInicial(config, requiereParrilla);
 
   const pedido = await conReintento(() =>
@@ -415,7 +469,7 @@ export async function editarPedido(id: number, input: CrearPedidoInput, usuarioI
 export async function cancelarPedido(id: number, usuarioId: string): Promise<PedidoDTO> {
   const actual = await prisma.pedido.findUnique({ where: { id }, include: pedidoInclude });
   if (!actual) throw new PedidoValidationError("Pedido no encontrado");
-  asegurarPedidoEditable(actual);
+  asegurarPedidoEditable(actual, await obtenerConfiguracion());
 
   const pedido = await conReintento(() =>
     prisma.$transaction(async (tx) => {
@@ -438,12 +492,65 @@ export async function cancelarPedido(id: number, usuarioId: string): Promise<Ped
   return toPedidoDTO(pedido);
 }
 
+const ESTADOS_SIN_ENTREGAR = ["PAGADO", "COMPLETADO"];
+
+/** Pedidos cobrados en un turno que nadie marcó como entregados (cocina,
+ * parrilla o entrega no se usan, o se olvidaron). Los anulados (CANCELADO)
+ * quedan fuera por estado. */
+export async function contarPedidosSinEntregarDelTurno(turnoId: string): Promise<number> {
+  return prisma.pedido.count({ where: { turnoId, estado: { in: ESTADOS_SIN_ENTREGAR } } });
+}
+
+/** Al cerrar caja, todo lo cobrado en el turno que siga sin entregar se da por
+ * entregado: cuando un local no usa las pantallas de cocina/parrilla/entrega,
+ * nadie más va a marcarlos. Recibe el cliente de la transacción del cierre
+ * para que cerrar el turno y entregar los pendientes sean todo-o-nada.
+ * Devuelve los pedidos cerrados para avisar en vivo. */
+export async function entregarPedidosDelTurno(turnoId: string, db: Prisma.TransactionClient): Promise<PedidoDTO[]> {
+  const pendientes = await db.pedido.findMany({
+    where: { turnoId, estado: { in: ESTADOS_SIN_ENTREGAR } },
+    select: { id: true },
+  });
+  const ids = pendientes.map((p) => p.id);
+  if (ids.length === 0) return [];
+
+  const now = new Date();
+  // Nunca pasaron por "listo": se completan y entregan a la vez.
+  await db.pedido.updateMany({
+    where: { id: { in: ids }, estado: "PAGADO" },
+    data: { estado: "ENTREGADO", cocinaLista: true, parrillaLista: true, completadoEn: now, entregadoEn: now },
+  });
+  // Ya estaban listos (COMPLETADO): solo falta la entrega.
+  await db.pedido.updateMany({
+    where: { id: { in: ids }, estado: "COMPLETADO" },
+    data: { estado: "ENTREGADO", entregadoEn: now },
+  });
+
+  // Solo los que realmente quedaron entregados (uno anulado justo en medio no).
+  const cerrados = await db.pedido.findMany({
+    where: { id: { in: ids }, estado: "ENTREGADO" },
+    include: pedidoInclude,
+  });
+  return cerrados.map(toPedidoDTO);
+}
+
 export async function obtenerPedido(id: number): Promise<PedidoDTO | null> {
   const pedido = await prisma.pedido.findUnique({ where: { id }, include: pedidoInclude });
   return pedido ? toPedidoDTO(pedido) : null;
 }
 
 export async function listarCola(estacion: "cocina" | "parrilla" | "entrega"): Promise<PedidoDTO[]> {
+  // Con el módulo apagado esa estación no se usa: no debe mostrar pedidos (que
+  // siguen pendientes hasta cerrar caja) ni siquiera los que ya existían.
+  const config = await obtenerConfiguracion();
+  const habilitado =
+    estacion === "cocina"
+      ? config.cocinaHabilitada
+      : estacion === "parrilla"
+        ? config.parrillaHabilitada
+        : config.entregaHabilitada;
+  if (!habilitado) return [];
+
   const where: Prisma.PedidoWhereInput =
     estacion === "cocina"
       ? { estado: "PAGADO", cocinaLista: false }

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { CajaTurno, CategoriaMovimientoCaja, MovimientoCaja } from "shared";
-import { SOCKET_EVENTS } from "shared";
+import type { CajaTurno, CategoriaMovimientoCaja, MetodoPago, MovimientoCaja, TurnoConVentas } from "shared";
+import { SOCKET_EVENTS, codigoPedido } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
 import { formatBs } from "../../lib/format";
+import { METODO_LABEL } from "../../lib/metodoPago";
 import { Modal } from "../../components/Modal";
 import { IconInput } from "../../components/IconInput";
 import { Campo } from "../../components/Campo";
 import { AbrirTurnoModal } from "../../components/AbrirTurnoModal";
+import { CerrarTurnoModal } from "../../components/CerrarTurnoModal";
 import { IconCheck, IconCoin, IconPlus, IconTag, IconTrash } from "../../components/icons";
 import { Badge, FilaVacia, FiltroBusqueda, FiltroChip, Paginacion, TablaSeccion, Th } from "../../components/TablaSeccion";
 
@@ -31,6 +33,22 @@ const CATEGORIAS_EGRESO: { valor: CategoriaMovimientoCaja; etiqueta: string }[] 
 
 function formatoHora(iso: string) {
   return new Date(iso).toLocaleString("es-BO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+/** Un movimiento anulado, o el reverso que anula a otro, no es plata real que
+ * entró o salió — es solo el registro contable de una corrección. Único punto
+ * de verdad para esta regla en el frontend (ver MOVIMIENTO_REAL_WHERE en el
+ * server, mismo criterio). */
+function esParteDeAnulacion(m: MovimientoCaja): boolean {
+  return m.anulado || !!m.anulaMovimientoId;
+}
+
+/** Caso específico de lo anterior: una venta de un pedido CANCELADO. Editar un
+ * pedido también deja un movimiento anulado y su reverso, pero el pedido sigue
+ * vigente — eso es una corrección, no una cancelación. Tampoco lo es una
+ * corrección manual de otra categoría (ej. un "Pago a proveedor" mal cargado). */
+function esCancelacionDeVenta(m: MovimientoCaja): boolean {
+  return m.categoria === "VENTA" && esParteDeAnulacion(m) && m.pedidoEstado === "CANCELADO";
 }
 
 type PresetCaja = "dia" | "semana" | "mes";
@@ -56,11 +74,79 @@ function rangoCajaPreset(preset: PresetCaja): { desde: Date; hasta: Date } {
   return { desde, hasta };
 }
 
+/** Una línea de la verificación de un turno: lo que el sistema calculó contra
+ * lo que el cajero contó/vio a mano, con el resultado en una palabra. */
+function LineaVerificacion({
+  etiqueta,
+  verbo,
+  esperado,
+  contado,
+}: {
+  etiqueta: string;
+  verbo: string;
+  esperado: number;
+  contado: number;
+}) {
+  const diferencia = Math.round((contado - esperado) * 100) / 100;
+  return (
+    <p className="flex flex-wrap items-center justify-end gap-x-1.5 text-xs text-neutral-600">
+      <span className="font-semibold text-neutral-800">{etiqueta}</span>
+      <span>
+        {verbo} Bs {formatBs(contado)} de Bs {formatBs(esperado)}
+      </span>
+      {diferencia === 0 ? (
+        <Badge tono="verde">Cuadra</Badge>
+      ) : diferencia < 0 ? (
+        <Badge tono="rojo">Faltan Bs {formatBs(-diferencia)}</Badge>
+      ) : (
+        <Badge tono="ambar">Sobran Bs {formatBs(diferencia)}</Badge>
+      )}
+    </p>
+  );
+}
+
+/** Verificación de un turno cerrado: efectivo contado y, si hubo, lo visto en
+ * la app de QR/tarjeta/transferencia — todos con el mismo formato. */
+function VerificacionTurno({ turno }: { turno: TurnoConVentas }) {
+  if (turno.estado === "ABIERTO") return <span className="text-xs text-neutral-400">Turno abierto</span>;
+
+  const otros = (Object.entries(turno.ventasPorMetodo) as [MetodoPago, number][]).filter(([m]) => m !== "EFECTIVO");
+  return (
+    <div className="space-y-1">
+      {turno.efectivoContado != null && turno.efectivoEsperado != null && (
+        <LineaVerificacion
+          etiqueta="Efectivo"
+          verbo="contaste"
+          esperado={turno.efectivoEsperado}
+          contado={turno.efectivoContado}
+        />
+      )}
+      {otros.map(([metodo, vendido]) => {
+        const verificado = turno.conteoOtrosMetodos?.[metodo as Exclude<MetodoPago, "EFECTIVO">];
+        return verificado ? (
+          <LineaVerificacion
+            key={metodo}
+            etiqueta={METODO_LABEL[metodo]}
+            verbo="viste"
+            esperado={verificado.esperado}
+            contado={verificado.contado}
+          />
+        ) : (
+          <p key={metodo} className="text-right text-xs text-neutral-400">
+            <span className="font-semibold">{METODO_LABEL[metodo]}</span> sin verificar (Bs {formatBs(vendido)})
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AdminCajaPage() {
   const { token } = useAuth();
   const socket = useSocket();
   const [turno, setTurno] = useState<CajaTurno | null>(null);
   const [movimientos, setMovimientos] = useState<MovimientoCaja[]>([]);
+  const [turnos, setTurnos] = useState<TurnoConVentas[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalAbrir, setModalAbrir] = useState(false);
   const [modalCerrar, setModalCerrar] = useState(false);
@@ -70,7 +156,8 @@ export function AdminCajaPage() {
   // Filtros de la tabla del libro de caja — siempre visibles. Por defecto se
   // ve "Último mes" (no solo el turno actual); un preset de período elige el
   // rango, con un rango manual como opción para casos puntuales.
-  const [filtroTipo, setFiltroTipo] = useState<"TODOS" | "INGRESO" | "EGRESO">("TODOS");
+  const [filtroTipo, setFiltroTipo] = useState<"TODOS" | "INGRESO" | "EGRESO" | "CANCELADOS">("TODOS");
+  const [filtroMetodo, setFiltroMetodo] = useState<MetodoPago | "TODOS">("TODOS");
   const [busqueda, setBusqueda] = useState("");
   const [preset, setPreset] = useState<PresetCaja>("mes");
   const [filtroDesde, setFiltroDesde] = useState("");
@@ -94,6 +181,7 @@ export function AdminCajaPage() {
     const params = new URLSearchParams({ desde: desde.toISOString(), hasta: hasta.toISOString() });
     const lista = await apiFetch<MovimientoCaja[]>(`/caja/movimientos?${params.toString()}`, token);
     setMovimientos(lista);
+    setTurnos(await apiFetch<TurnoConVentas[]>(`/caja/turnos?${params.toString()}`, token));
     setCargando(false);
   }
 
@@ -122,14 +210,33 @@ export function AdminCajaPage() {
     }
   }
 
-  const totalIngresos = movimientos.filter((m) => m.tipo === "INGRESO" && !m.anulado).reduce((s, m) => s + m.monto, 0);
-  const totalEgresos = movimientos.filter((m) => m.tipo === "EGRESO" && !m.anulado).reduce((s, m) => s + m.monto, 0);
+  // Sin excluir anulaciones, el reverso (tipo EGRESO) de una venta cancelada
+  // se sumaría como egreso real, inflando el total (mismo criterio que
+  // reporteFinanciero, ver reportes/service.ts).
+  const totalIngresos = movimientos
+    .filter((m) => m.tipo === "INGRESO" && !esParteDeAnulacion(m))
+    .reduce((s, m) => s + m.monto, 0);
+  const totalEgresos = movimientos
+    .filter((m) => m.tipo === "EGRESO" && !esParteDeAnulacion(m))
+    .reduce((s, m) => s + m.monto, 0);
   const neto = totalIngresos - totalEgresos;
 
   const movimientosFiltrados = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
     return movimientos.filter((m) => {
-      if (filtroTipo !== "TODOS" && m.tipo !== filtroTipo) return false;
+      // "Ingresos"/"Egresos" siempre excluyen cualquier anulación (sea cual
+      // sea su categoría) porque no es plata real que entró o salió. "Cancelados"
+      // en cambio es específico de VENTA: junta las dos mitades de un pedido
+      // cancelado (el ingreso original, tachado, y su reverso en egresos) para
+      // poder revisarlas juntas. Una corrección manual de otra categoría (ej.
+      // un "Pago a proveedor" mal cargado y anulado) no es un pedido cancelado,
+      // así que no entra acá — sigue visible (atenuada) solo en "Todos".
+      if (filtroTipo === "CANCELADOS") {
+        if (!esCancelacionDeVenta(m)) return false;
+      } else if (filtroTipo !== "TODOS") {
+        if (m.tipo !== filtroTipo || esParteDeAnulacion(m)) return false;
+      }
+      if (filtroMetodo !== "TODOS" && m.metodoPago !== filtroMetodo) return false;
       if (!termino) return true;
       return (
         m.concepto.toLowerCase().includes(termino) ||
@@ -137,18 +244,35 @@ export function AdminCajaPage() {
         (CATEGORIA_LABEL[m.categoria] ?? m.categoria).toLowerCase().includes(termino)
       );
     });
-  }, [movimientos, filtroTipo, busqueda]);
+  }, [movimientos, filtroTipo, filtroMetodo, busqueda]);
 
-  // Neto de exactamente lo que se ve en la tabla con los filtros elegidos
-  // (no el total del turno entero) — para no tener que sumar a mano lo que
-  // se está mirando ahora mismo.
-  const netoFiltrado = movimientosFiltrados
-    .filter((m) => !m.anulado)
-    .reduce((s, m) => s + (m.tipo === "INGRESO" ? m.monto : -m.monto), 0);
+  // En "Cancelados" el neto de ingreso-egreso siempre da cero (es la gracia:
+  // la venta no debe afectar la caja) — mostrar "Bs 0.00" ahí no le dice nada
+  // al admin sobre cuánto se canceló. En cambio mostramos el total vendido
+  // que se anuló (el lado INGRESO de cada par, sin contarlo dos veces con su
+  // reverso). El resto de las vistas sigue mostrando el neto de lo filtrado.
+  // Un pedido editado y luego cancelado deja varios ingresos anulados: cuenta
+  // solo el último (lo que realmente valía al cancelarse).
+  const cancelados = new Map<number | null, { creadoEn: string; monto: number }>();
+  if (filtroTipo === "CANCELADOS") {
+    for (const m of movimientosFiltrados) {
+      if (m.tipo !== "INGRESO") continue;
+      const previo = cancelados.get(m.pedidoId);
+      if (!previo || m.creadoEn > previo.creadoEn) cancelados.set(m.pedidoId, { creadoEn: m.creadoEn, monto: m.monto });
+    }
+  }
+  const cantidadCancelados = cancelados.size;
+
+  const netoFiltrado =
+    filtroTipo === "CANCELADOS"
+      ? [...cancelados.values()].reduce((s, c) => s + c.monto, 0)
+      : movimientosFiltrados
+          .filter((m) => !esParteDeAnulacion(m))
+          .reduce((s, m) => s + (m.tipo === "INGRESO" ? m.monto : -m.monto), 0);
 
   useEffect(() => {
     setPagina(1);
-  }, [filtroTipo, busqueda, desde.getTime(), hasta.getTime(), tamano]);
+  }, [filtroTipo, filtroMetodo, busqueda, desde.getTime(), hasta.getTime(), tamano]);
   const totalPaginas = Math.max(1, Math.ceil(movimientosFiltrados.length / tamano));
   const movimientosPagina = movimientosFiltrados.slice((pagina - 1) * tamano, pagina * tamano);
 
@@ -272,6 +396,20 @@ export function AdminCajaPage() {
             <FiltroChip activo={filtroTipo === "EGRESO"} acento="rojo" onClick={() => setFiltroTipo("EGRESO")}>
               Egresos
             </FiltroChip>
+            <FiltroChip activo={filtroTipo === "CANCELADOS"} acento="gris" onClick={() => setFiltroTipo("CANCELADOS")}>
+              Pedidos cancelados
+            </FiltroChip>
+            <span className="mx-1 hidden h-5 w-px bg-neutral-200 sm:block" aria-hidden />
+            {(["TODOS", "EFECTIVO", "QR", "TARJETA", "TRANSFERENCIA"] as const).map((metodo) => (
+              <FiltroChip
+                key={metodo}
+                activo={filtroMetodo === metodo}
+                acento="azul"
+                onClick={() => setFiltroMetodo(metodo)}
+              >
+                {metodo === "TODOS" ? "Todos los métodos" : METODO_LABEL[metodo]}
+              </FiltroChip>
+            ))}
             <FiltroBusqueda value={busqueda} onChange={setBusqueda} placeholder="Buscar por concepto, categoría o quién lo registró…" />
           </>
         }
@@ -300,16 +438,39 @@ export function AdminCajaPage() {
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {movimientosPagina.map((m) => (
-                <tr key={m.id} className={m.anulado ? "opacity-50" : ""}>
+                <tr key={m.id} className={m.anulado || m.anulaMovimientoId ? "opacity-50" : ""}>
                   <td className="px-3 py-2.5 text-sm text-neutral-500">{formatoHora(m.creadoEn)}</td>
                   <td className="px-3 py-2.5 text-sm">
                     <span className={m.anulado ? "text-neutral-400 line-through" : "font-medium text-neutral-900"}>
                       {m.concepto}
                     </span>
+                    {m.pedidoId != null && (
+                      <span className="ml-1.5 text-xs text-neutral-400">{codigoPedido(m.pedidoId)}</span>
+                    )}
                     {m.anulado && (
                       <span className="ml-1.5">
                         <Badge tono="gris" hint="Este movimiento fue anulado: no cuenta en los totales, pero queda visible para auditoría.">
                           anulado
+                        </Badge>
+                      </span>
+                    )}
+                    {!!m.anulaMovimientoId && esCancelacionDeVenta(m) && (
+                      <span className="ml-1.5">
+                        <Badge
+                          tono="gris"
+                          hint="Es el reverso de un pedido cancelado, no un egreso real del negocio — neutraliza la venta anulada y no cuenta en los totales de ingresos/egresos."
+                        >
+                          reverso de cancelación
+                        </Badge>
+                      </span>
+                    )}
+                    {!!m.anulaMovimientoId && !esCancelacionDeVenta(m) && (
+                      <span className="ml-1.5">
+                        <Badge
+                          tono="gris"
+                          hint="Es el reverso de una corrección (editar un pedido o un ajuste manual), no de un pedido cancelado — no cuenta en los totales de ingresos/egresos."
+                        >
+                          reverso de corrección
                         </Badge>
                       </span>
                     )}
@@ -346,10 +507,16 @@ export function AdminCajaPage() {
               <tfoot>
                 <tr className="border-t-2 border-neutral-200">
                   <td colSpan={5} className="px-3 py-2.5 text-right text-sm font-semibold text-neutral-700">
-                    Total de lo filtrado ({movimientosFiltrados.length} movimiento{movimientosFiltrados.length === 1 ? "" : "s"})
+                    {filtroTipo === "CANCELADOS"
+                      ? `Total vendido y anulado (${cantidadCancelados} pedido${cantidadCancelados === 1 ? "" : "s"})`
+                      : `Total de lo filtrado (${movimientosFiltrados.length} movimiento${movimientosFiltrados.length === 1 ? "" : "s"})`}
                   </td>
-                  <td className={`px-3 py-2.5 text-right text-sm font-bold ${netoFiltrado >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {netoFiltrado >= 0 ? "+" : "-"}Bs {formatBs(Math.abs(netoFiltrado))}
+                  <td
+                    className={`px-3 py-2.5 text-right text-sm font-bold ${
+                      filtroTipo === "CANCELADOS" ? "text-neutral-600" : netoFiltrado >= 0 ? "text-emerald-600" : "text-red-600"
+                    }`}
+                  >
+                    {filtroTipo === "CANCELADOS" ? "" : netoFiltrado >= 0 ? "+" : "-"}Bs {formatBs(Math.abs(netoFiltrado))}
                   </td>
                   <td />
                 </tr>
@@ -364,6 +531,63 @@ export function AdminCajaPage() {
             onCambiarPagina={setPagina}
             onCambiarTamano={setTamano}
           />
+        </div>
+      </TablaSeccion>
+
+
+      <TablaSeccion
+        icono={IconCoin}
+        acento="azul"
+        titulo="Turnos de caja"
+        descripcion="Con cuánto se abrió cada caja y cómo cerró, medio por medio: lo que calculó el sistema contra lo que se contó o se vio en la app. El fondo inicial no es una venta: no cambia ganancias ni reportes."
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-neutral-100">
+                <Th>Apertura</Th>
+                <Th>Cierre</Th>
+                <Th>Abierto por</Th>
+                <Th align="right">Fondo inicial</Th>
+                <Th align="right" hint="Total vendido en el turno, con el desglose por medio de pago.">
+                  Ventas
+                </Th>
+                <Th
+                  align="right"
+                  hint="Al cerrar: lo que el sistema calculó contra lo que el cajero contó (efectivo) o vio en su app (QR, tarjeta, transferencia). El efectivo esperado incluye el fondo inicial."
+                >
+                  Verificación al cerrar
+                </Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {turnos.map((t) => (
+                <tr key={t.id}>
+                  <td className="px-3 py-2.5 text-sm text-neutral-500">{formatoHora(t.abiertoEn)}</td>
+                  <td className="px-3 py-2.5 text-sm text-neutral-500">
+                    {t.cerradoEn ? formatoHora(t.cerradoEn) : <Badge tono="verde">abierto</Badge>}
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-neutral-500">{t.abiertoPorNombre}</td>
+                  <td className="px-3 py-2.5 text-right text-sm font-medium">Bs {formatBs(t.fondoInicial)}</td>
+                  <td className="px-3 py-2.5 text-right text-sm">
+                    <span className="font-medium">Bs {formatBs(t.totalVendido)}</span>
+                    {/* Desglose solo si hubo más de un medio o alguno que no es efectivo. */}
+                    {Object.keys(t.ventasPorMetodo).some((m) => m !== "EFECTIVO") && (
+                      <span className="block text-xs text-neutral-500">
+                        {(Object.entries(t.ventasPorMetodo) as [MetodoPago, number][])
+                          .map(([m, monto]) => `${METODO_LABEL[m]} ${formatBs(monto)}`)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <VerificacionTurno turno={t} />
+                  </td>
+                </tr>
+              ))}
+              {turnos.length === 0 && !cargando && <FilaVacia colSpan={6}>No hay turnos de caja en este período.</FilaVacia>}
+            </tbody>
+          </table>
         </div>
       </TablaSeccion>
 
@@ -399,66 +623,6 @@ export function AdminCajaPage() {
         />
       )}
     </div>
-  );
-}
-
-function CerrarTurnoModal({
-  token,
-  turno,
-  onCerrar,
-  onListo,
-}: {
-  token: string | null;
-  turno: CajaTurno;
-  onCerrar: () => void;
-  onListo: () => void;
-}) {
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setGuardando(true);
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const nota = String(form.get("notaCierre") ?? "").trim();
-    try {
-      await apiFetch(`/caja/turnos/${turno.id}/cerrar`, token, {
-        method: "PATCH",
-        body: JSON.stringify({ efectivoContado: Number(form.get("efectivoContado")), notaCierre: nota || undefined }),
-      });
-      onListo();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo cerrar el turno");
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <Modal titulo="Cerrar turno de caja" onCerrar={onCerrar}>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <p className="text-xs text-neutral-500">
-          Contá el efectivo real en caja e ingresalo abajo — el sistema calcula la diferencia contra lo que
-          debería haber (fondo inicial + ventas en efectivo del turno).
-        </p>
-        <Campo etiqueta="Efectivo contado (Bs)">
-          <IconInput icon={IconCoin} name="efectivoContado" type="number" step="0.01" min="0" placeholder="0.00" required autoFocus />
-        </Campo>
-        <Campo etiqueta="Nota (opcional)">
-          <IconInput icon={IconTag} name="notaCierre" placeholder="Ej. faltó cambio, sobró propina" />
-        </Campo>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={guardando}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          <IconCheck width={16} height={16} />
-          {guardando ? "Cerrando…" : "Confirmar cierre"}
-        </button>
-      </form>
-    </Modal>
   );
 }
 

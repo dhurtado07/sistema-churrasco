@@ -70,15 +70,13 @@ export async function pedidosRoutes(fastify: FastifyInstance) {
       if (pedido.estado === "PAGADO") {
         realtime.pedidoNuevo(pedido);
       } else {
-        // Nació ya resuelto porque algún módulo (cocina/parrilla/entrega)
-        // está deshabilitado en la configuración — no hay nada pendiente
-        // que mostrarle a cocina/parrilla.
+        // Nació ya resuelto porque cocina y parrilla están deshabilitadas
+        // en la configuración — no hay nada pendiente que mostrarles.
         realtime.pedidoCompletado(pedido);
-        if (pedido.estado === "ENTREGADO") {
-          realtime.pedidoEntregado(pedido);
-        }
-        realtime.ventaRegistrada(await reporteGananciasDeHoy());
       }
+      // La venta cuenta desde que se cobra, esté o no pendiente en cocina/entrega
+      // (con esos módulos apagados el pedido se queda PAGADO hasta cerrar caja).
+      realtime.ventaRegistrada(await reporteGananciasDeHoy());
       // Ticket digital ya se muestra en caja; esto además dispara la impresión
       // térmica automática vía el agente de impresión local (si hay uno conectado).
       realtime.ticketImprimir(pedido);
