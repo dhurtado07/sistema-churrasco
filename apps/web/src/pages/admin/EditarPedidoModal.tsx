@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Cliente, Pedido, Producto, TipoConsumo } from "shared";
 import { apiFetch, ApiError } from "../../lib/api";
-import { itemsPedidoACarrito, useCarrito } from "../../lib/useCarrito";
+import { itemsPedidoACarrito, totalDeLinea, useCarrito } from "../../lib/useCarrito";
 import { useMenu } from "../../lib/menuContext";
 import { formatBs } from "../../lib/format";
 import { useConfiguracion } from "../../lib/configuracionContext";
@@ -197,14 +197,7 @@ export function EditarPedidoModal({
                     </button>
                     <span className="ml-auto text-xs text-neutral-500">
                       Bs{" "}
-                      {formatBs(
-                        (linea.precioUnitario +
-                          linea.extras.reduce((s, sel) => {
-                            const extra = extras.find((e) => e.id === sel.extraId);
-                            return s + (extra?.precio ?? 0) * sel.cantidad;
-                          }, 0)) *
-                          linea.cantidad,
-                      )}
+                      {formatBs(totalDeLinea(linea, extras))}
                     </span>
                   </div>
                   {extras.length > 0 && (

@@ -9,13 +9,13 @@ import type {
   Pedido as PedidoDTO,
 } from "shared";
 import type { Prisma } from "@prisma/client";
+import { aCentavos } from "shared";
 import { prisma } from "../../db.js";
 
 /** Cliente de base de datos: el normal o el de una transacción — así el cierre
  * de turno y la entrega de pendientes pueden ir en una sola transacción. */
 type Db = Prisma.TransactionClient;
 
-const aCentavos = (n: number) => Math.round(n * 100) / 100;
 
 export class CajaValidationError extends Error {}
 

@@ -1,4 +1,5 @@
 import type { Compra as CompraDTO, CrearCompraInput } from "shared";
+import { aCentavos } from "shared";
 import { prisma } from "../../db.js";
 
 export class CompraValidationError extends Error {}
@@ -50,10 +51,10 @@ export async function crearCompra(input: CrearCompraInput, usuarioId: string): P
     cantidad: item.cantidad,
     unidad: item.unidad,
     precioUnitario: item.precioUnitario,
-    subtotal: item.cantidad * item.precioUnitario,
+    subtotal: aCentavos(item.cantidad * item.precioUnitario),
     insumoId: item.insumoId ?? null,
   }));
-  const total = itemsData.reduce((sum, item) => sum + item.subtotal, 0);
+  const total = aCentavos(itemsData.reduce((sum, item) => sum + item.subtotal, 0));
 
   const compra = await prisma.$transaction(async (tx) => {
     const creada = await tx.compra.create({

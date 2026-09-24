@@ -6,6 +6,7 @@ import type {
   PuntoSerieFinanciera,
 } from "shared";
 import ExcelJS from "exceljs";
+import { totalLinea } from "shared";
 import { prisma } from "../../db.js";
 import { MOVIMIENTO_REAL_WHERE } from "../caja/service.js";
 
@@ -44,8 +45,7 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
 
     for (const item of pedido.items) {
-      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio * extra.cantidad, 0);
-      const itemTotal = (item.precioUnitario + extrasTotal) * item.cantidad;
+      const itemTotal = totalLinea(item.precioUnitario, item.cantidad, item.extras);
       const actual = porProductoMap.get(item.productoId) ?? {
         productoId: item.productoId,
         nombre: item.nombreProducto,
@@ -59,8 +59,8 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
   }
 
   return {
-    desde: desde.toISOString().slice(0, 10),
-    hasta: hasta.toISOString().slice(0, 10),
+    desde: fechaLocalISO(desde),
+    hasta: fechaLocalISO(hasta),
     totalVendido,
     cantidadPedidos: pedidos.length,
     porTipoConsumo,
@@ -76,15 +76,23 @@ export const reporteGananciasDeHoy = () => reporteGanancias(new Date());
 // tiempo para graficar.
 // ---------------------------------------------------------------------------
 
-function claveBucket(fecha: Date, agrupar: "dia" | "semana" | "mes"): string {
-  if (agrupar === "mes") return fecha.toISOString().slice(0, 7);
+/** Fecha "YYYY-MM-DD" en la hora local del negocio — NO toISOString(), que es UTC
+ * y pasaría las ventas de la noche (desde las 8 pm en Bolivia) al día siguiente. */
+function fechaLocalISO(fecha: Date): string {
+  const mes = String(fecha.getMonth() + 1).padStart(2, "0");
+  const dia = String(fecha.getDate()).padStart(2, "0");
+  return `${fecha.getFullYear()}-${mes}-${dia}`;
+}
+
+export function claveBucket(fecha: Date, agrupar: "dia" | "semana" | "mes"): string {
+  if (agrupar === "mes") return fechaLocalISO(fecha).slice(0, 7);
   if (agrupar === "semana") {
     const inicio = new Date(fecha);
     const diaSemana = (inicio.getDay() + 6) % 7; // lunes = 0
     inicio.setDate(inicio.getDate() - diaSemana);
-    return inicio.toISOString().slice(0, 10);
+    return fechaLocalISO(inicio);
   }
-  return fecha.toISOString().slice(0, 10);
+  return fechaLocalISO(fecha);
 }
 
 export async function reporteFinanciero(
@@ -144,8 +152,7 @@ export async function reporteFinanciero(
   for (const pedido of pedidos) {
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
     for (const item of pedido.items) {
-      const extrasTotal = item.extras.reduce((sum, extra) => sum + extra.precio * extra.cantidad, 0);
-      const itemTotal = (item.precioUnitario + extrasTotal) * item.cantidad;
+      const itemTotal = totalLinea(item.precioUnitario, item.cantidad, item.extras);
       const actual = porProductoMap.get(item.productoId) ?? {
         productoId: item.productoId,
         nombre: item.nombreProducto,

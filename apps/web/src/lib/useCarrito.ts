@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Extra, ItemPedido, Producto } from "shared";
+import { totalLinea } from "shared";
 
 export interface ExtraLineaCarrito {
   extraId: string;
@@ -27,6 +28,16 @@ export function itemsPedidoACarrito(items: ItemPedido[]): LineaCarrito[] {
     cantidad: item.cantidad,
     extras: item.extras.map((extra) => ({ extraId: extra.extraId, cantidad: extra.cantidad })),
   }));
+}
+
+/** Total de una línea del carrito (plato x cantidad + sus extras, cada extra una
+ * vez): el mismo cálculo que hace el servidor al cobrar. */
+export function totalDeLinea(linea: LineaCarrito, extras: Extra[]): number {
+  return totalLinea(
+    linea.precioUnitario,
+    linea.cantidad,
+    linea.extras.map((sel) => ({ precio: extras.find((e) => e.id === sel.extraId)?.precio ?? 0, cantidad: sel.cantidad })),
+  );
 }
 
 export function useCarrito(extras: Extra[], inicial: LineaCarrito[] = []) {
@@ -94,13 +105,7 @@ export function useCarrito(extras: Extra[], inicial: LineaCarrito[] = []) {
   }
 
   const total = useMemo(() => {
-    return carrito.reduce((suma, linea) => {
-      const extrasTotal = linea.extras.reduce((s, sel) => {
-        const extra = extras.find((e) => e.id === sel.extraId);
-        return s + (extra?.precio ?? 0) * sel.cantidad;
-      }, 0);
-      return suma + (linea.precioUnitario + extrasTotal) * linea.cantidad;
-    }, 0);
+    return carrito.reduce((suma, linea) => suma + totalDeLinea(linea, extras), 0);
   }, [carrito, extras]);
 
   return { carrito, setCarrito, agregarProducto, cambiarCantidad, cambiarCantidadExtra, quitarLinea, total };

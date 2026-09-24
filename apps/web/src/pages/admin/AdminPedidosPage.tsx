@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Pedido } from "shared";
-import { SOCKET_EVENTS, codigoPedido, coincideConCodigo } from "shared";
+import { SOCKET_EVENTS, codigoPedido, coincideConCodigo, hoyBolivia, inicioDelDiaBolivia } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
@@ -24,14 +24,8 @@ import {
 
 const TABS = TABS_PEDIDOS;
 
-function hoyComoInputDate(): string {
-  // "YYYY-MM-DD" en la fecha local del navegador — lo que espera un
-  // <input type="date">.
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, "0");
-  const dia = String(hoy.getDate()).padStart(2, "0");
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
-}
+// "YYYY-MM-DD" de hoy en Bolivia — lo que espera un <input type="date">.
+const hoyComoInputDate = hoyBolivia;
 
 /** new Date("YYYY-MM-DD") lo interpreta como medianoche UTC, no medianoche
  * local — con Bolivia en UTC-4 eso corre el día entero para atrás. Partiendo
@@ -39,8 +33,7 @@ function hoyComoInputDate(): string {
  * los toma como hora local, sin ese corrimiento (mismo criterio que ya usa
  * Reportes). */
 function fechaLocalDesdeInput(valor: string): Date {
-  const [anio, mes, dia] = valor.split("-").map(Number);
-  return new Date(anio, mes - 1, dia);
+  return inicioDelDiaBolivia(valor);
 }
 
 export function AdminPedidosPage() {

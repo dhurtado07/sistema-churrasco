@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReporteGanancias } from "shared";
-import { SOCKET_EVENTS } from "shared";
+import { SOCKET_EVENTS, hoyBolivia, primerDiaDelMes, sumarDias } from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
@@ -13,17 +13,15 @@ const bs = (v: number) => `Bs ${formatBs(v)}`;
 
 type Preset = "hoy" | "semana" | "mes" | "manual";
 
-function hoyStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+// "Hoy" es siempre el día de Bolivia (no el UTC del navegador, que desde las
+// 8 pm ya es "mañana" y mostraba un día vacío).
+const hoyStr = hoyBolivia;
 
 function rangoDePreset(preset: Exclude<Preset, "manual">): { desde: string; hasta: string } {
   const hasta = hoyStr();
   if (preset === "hoy") return { desde: hasta, hasta };
-  const inicio = new Date();
-  if (preset === "semana") inicio.setDate(inicio.getDate() - 6);
-  else inicio.setDate(1);
-  return { desde: inicio.toISOString().slice(0, 10), hasta };
+  if (preset === "semana") return { desde: sumarDias(hasta, -6), hasta };
+  return { desde: primerDiaDelMes(hasta), hasta };
 }
 
 function formatoFechaCorta(iso: string): string {

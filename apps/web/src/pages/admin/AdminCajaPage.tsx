@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { CajaTurno, CategoriaMovimientoCaja, MetodoPago, MovimientoCaja, TurnoConVentas } from "shared";
-import { SOCKET_EVENTS, codigoPedido } from "shared";
+import {
+  SOCKET_EVENTS,
+  codigoPedido,
+  finDelDiaBolivia,
+  hoyBolivia,
+  inicioDelDiaBolivia,
+  primerDiaDelMes,
+  sumarDias,
+} from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
@@ -60,18 +68,12 @@ const PRESET_LABEL: Record<PresetCaja, string> = {
 };
 
 function rangoCajaPreset(preset: PresetCaja): { desde: Date; hasta: Date } {
-  const hasta = new Date();
-  hasta.setHours(23, 59, 59, 999);
-  const desde = new Date();
-  desde.setHours(0, 0, 0, 0);
-
-  if (preset === "dia") return { desde, hasta };
-  if (preset === "semana") {
-    desde.setDate(desde.getDate() - 6);
-    return { desde, hasta };
-  }
-  desde.setDate(1);
-  return { desde, hasta };
+  // Días completos en horario de Bolivia, no de la zona del navegador.
+  const hoy = hoyBolivia();
+  const hasta = finDelDiaBolivia(hoy);
+  if (preset === "dia") return { desde: inicioDelDiaBolivia(hoy), hasta };
+  if (preset === "semana") return { desde: inicioDelDiaBolivia(sumarDias(hoy, -6)), hasta };
+  return { desde: inicioDelDiaBolivia(primerDiaDelMes(hoy)), hasta };
 }
 
 /** Una línea de la verificación de un turno: lo que el sistema calculó contra
@@ -168,8 +170,8 @@ export function AdminCajaPage() {
 
   const { desde, hasta } = useMemo(() => {
     if (usarRangoManual && filtroDesde && filtroHasta) {
-      const d = new Date(`${filtroDesde}T00:00:00`);
-      const h = new Date(`${filtroHasta}T23:59:59`);
+      const d = inicioDelDiaBolivia(filtroDesde);
+      const h = finDelDiaBolivia(filtroHasta);
       return { desde: d, hasta: h };
     }
     return rangoCajaPreset(preset);

@@ -1,5 +1,6 @@
 import type { Pedido as PedidoDTO, Configuracion, ItemAuditado, PedidoAuditoria as PedidoAuditoriaDTO } from "shared";
 import type { CrearPedidoInput } from "shared";
+import { totalLinea } from "shared";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { obtenerConfiguracion } from "../configuracion/service.js";
@@ -265,10 +266,9 @@ async function construirItems(items: CrearPedidoInput["items"]) {
     const producto = productoMap.get(item.productoId)!;
     const extrasData = item.extras.map((seleccion) => {
       const extra = extraMap.get(seleccion.extraId)!;
-      total += extra.precio * seleccion.cantidad * item.cantidad;
       return { extraId: extra.id, nombre: extra.nombre, precio: extra.precio, cantidad: seleccion.cantidad };
     });
-    total += producto.precio * item.cantidad;
+    total += totalLinea(producto.precio, item.cantidad, extrasData);
     return {
       productoId: producto.id,
       nombreProducto: producto.nombre,

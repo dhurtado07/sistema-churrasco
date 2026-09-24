@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HorasTrabajadasEmpleado, ReporteFinanciero } from "shared";
+import {
+  finDelDiaBolivia,
+  hoyBolivia,
+  inicioDelDiaBolivia,
+  primerDiaDelAnio,
+  primerDiaDelMes,
+  sumarDias,
+} from "shared";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, descargarArchivo, ApiError } from "../../lib/api";
 import { formatBs, formatoFechaCortaDesdeClaveBO, formatoHoraBO } from "../../lib/format";
@@ -22,22 +30,14 @@ import { BarrasAgrupadas, BarrasCategoria, BarrasRanking, Dona, PALETA } from ".
 type Preset = "dia" | "semana" | "mes" | "anio";
 
 function rangoDePreset(preset: Preset): { desde: Date; hasta: Date; agrupar: "dia" | "semana" | "mes" } {
-  const hasta = new Date();
-  hasta.setHours(23, 59, 59, 999);
-  const desde = new Date();
-  desde.setHours(0, 0, 0, 0);
+  // Días completos en horario de Bolivia, no de la zona del navegador.
+  const hoy = hoyBolivia();
+  const hasta = finDelDiaBolivia(hoy);
 
-  if (preset === "dia") return { desde, hasta, agrupar: "dia" };
-  if (preset === "semana") {
-    desde.setDate(desde.getDate() - 6);
-    return { desde, hasta, agrupar: "dia" };
-  }
-  if (preset === "mes") {
-    desde.setDate(1);
-    return { desde, hasta, agrupar: "dia" };
-  }
-  desde.setMonth(0, 1);
-  return { desde, hasta, agrupar: "mes" };
+  if (preset === "dia") return { desde: inicioDelDiaBolivia(hoy), hasta, agrupar: "dia" };
+  if (preset === "semana") return { desde: inicioDelDiaBolivia(sumarDias(hoy, -6)), hasta, agrupar: "dia" };
+  if (preset === "mes") return { desde: inicioDelDiaBolivia(primerDiaDelMes(hoy)), hasta, agrupar: "dia" };
+  return { desde: inicioDelDiaBolivia(primerDiaDelAnio(hoy)), hasta, agrupar: "mes" };
 }
 
 const CATEGORIA_LABEL: Record<string, string> = {
@@ -174,10 +174,8 @@ export function AdminReportesPage() {
 
   const { desde, hasta, agrupar } = useMemo(() => {
     if (usarRangoManual && desdeManual && hastaManual) {
-      const d = new Date(desdeManual);
-      d.setHours(0, 0, 0, 0);
-      const h = new Date(hastaManual);
-      h.setHours(23, 59, 59, 999);
+      const d = inicioDelDiaBolivia(desdeManual);
+      const h = finDelDiaBolivia(hastaManual);
       const dias = (h.getTime() - d.getTime()) / 86_400_000;
       return { desde: d, hasta: h, agrupar: dias > 60 ? ("mes" as const) : ("dia" as const) };
     }

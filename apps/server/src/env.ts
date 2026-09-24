@@ -1,5 +1,11 @@
 import "dotenv/config";
 
+// Zona horaria del negocio (Bolivia). Los límites de "día" y la agrupación de los
+// reportes se calculan en hora local: si el proceso corriera en UTC, las ventas
+// de la noche caerían en el día siguiente. Docker ya la fija; esto cubre el resto
+// (ej. desarrollo en Windows, donde `TZ=... comando` no funciona en los scripts).
+process.env.TZ ??= "America/La_Paz";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Falta la variable de entorno ${name}`);
