@@ -93,6 +93,10 @@ model Producto {
   precio           Float
   activo           Boolean      @default(true)
   requiereParrilla Boolean      @default(true)
+  // Orden en que se muestra en el menú de Caja (menor = primero); los productos
+  // con el mismo orden salen alfabéticos. 999 = sin orden especial: los productos
+  // nuevos quedan al final de su categoría hasta que se les asigne uno.
+  orden            Int          @default(999)
   // Data URI (imagen ya redimensionada/comprimida en el navegador antes de
   // subirla) — evita depender de un bucket de almacenamiento externo (S3,
   // Cloudinary) que todavía no está configurado en este proyecto.

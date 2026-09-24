@@ -6,16 +6,20 @@ import { actualizarReceta, InsumoValidationError, obtenerReceta } from "../insum
 
 async function broadcastMenu() {
   const [productos, extras] = await Promise.all([
-    prisma.producto.findMany({ orderBy: { categoria: "asc" } }),
+    prisma.producto.findMany({ orderBy: ORDEN_PRODUCTOS }),
     prisma.extra.findMany({ orderBy: { nombre: "asc" } }),
   ]);
   realtime.menuActualizado({ productos, extras });
 }
 
+/** Orden del menú: por categoría y, dentro de cada una, el orden que definió el
+ * cliente (lo más vendido primero); el resto alfabético. */
+const ORDEN_PRODUCTOS = [{ categoria: "asc" as const }, { orden: "asc" as const }, { nombre: "asc" as const }];
+
 export async function menuRoutes(fastify: FastifyInstance) {
   fastify.get("/menu", { preHandler: [fastify.authenticate] }, async () => {
     const [productos, extras] = await Promise.all([
-      prisma.producto.findMany({ where: { activo: true }, orderBy: { categoria: "asc" } }),
+      prisma.producto.findMany({ where: { activo: true }, orderBy: ORDEN_PRODUCTOS }),
       prisma.extra.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     ]);
     return { productos, extras };
@@ -25,7 +29,7 @@ export async function menuRoutes(fastify: FastifyInstance) {
 
   fastify.get("/publico/menu", async () => {
     const [productos, extras] = await Promise.all([
-      prisma.producto.findMany({ where: { activo: true }, orderBy: { categoria: "asc" } }),
+      prisma.producto.findMany({ where: { activo: true }, orderBy: ORDEN_PRODUCTOS }),
       prisma.extra.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     ]);
     return { productos, extras };
@@ -49,7 +53,7 @@ export async function menuRoutes(fastify: FastifyInstance) {
 
   fastify.get("/admin/menu", { preHandler: [fastify.requireRole("admin")] }, async () => {
     const [productos, extras] = await Promise.all([
-      prisma.producto.findMany({ orderBy: { categoria: "asc" } }),
+      prisma.producto.findMany({ orderBy: ORDEN_PRODUCTOS }),
       prisma.extra.findMany({ orderBy: { nombre: "asc" } }),
     ]);
     return { productos, extras };
