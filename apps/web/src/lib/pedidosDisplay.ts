@@ -1,10 +1,33 @@
-import type { Configuracion, ExtraSeleccionado, Pedido } from "shared";
+import type { Configuracion, ExtraSeleccionado, ItemPedido, Pedido } from "shared";
 
 /** "Chorizo" si es una sola unidad, "2x Chorizo" si son varias — para que
  * cocina/parrilla sepan cuántas porciones preparar de verdad, no solo que
  * el plato "lleva" ese extra. */
 export function formatoExtra(extra: Pick<ExtraSeleccionado, "nombre" | "cantidad">): string {
   return extra.cantidad > 1 ? `${extra.cantidad}x ${extra.nombre}` : extra.nombre;
+}
+
+export interface LineaPedido {
+  key: string;
+  nombre: string;
+  cantidad: number;
+  imagenUrl: string | null;
+}
+
+/** Plato y extras como líneas iguales: cada extra va justo debajo del plato
+ * con el que se pidió, con su foto y su cantidad — antes iba como texto chico
+ * bajo el plato y en cocina se perdía de vista. La cantidad del extra es la
+ * de su línea, no se multiplica por la del plato (así también se cobra). */
+export function lineasDelPedido(items: ItemPedido[]): LineaPedido[] {
+  return items.flatMap((item) => [
+    { key: item.id, nombre: item.nombreProducto, cantidad: item.cantidad, imagenUrl: item.imagenUrl },
+    ...item.extras.map((extra, i) => ({
+      key: `${item.id}-extra-${extra.extraId}-${i}`,
+      nombre: extra.nombre,
+      cantidad: extra.cantidad,
+      imagenUrl: extra.imagenUrl ?? null,
+    })),
+  ]);
 }
 
 export type FiltroPedidos = "pendientes" | "listos" | "atendidos" | "cancelados";

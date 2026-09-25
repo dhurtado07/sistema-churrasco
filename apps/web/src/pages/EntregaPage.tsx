@@ -8,9 +8,10 @@ import { useSocket } from "../lib/socketContext";
 import { useConfiguracion } from "../lib/configuracionContext";
 import { IconAlerta, IconBag, IconCheck, IconIdCard, IconMesa, IconUser } from "../components/icons";
 import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
-import { ImagenProducto } from "../components/ImagenProducto";
+import { LineasPedido } from "../components/LineasPedido";
 import { formatoFechaHoraBO } from "../lib/format";
-import { formatoExtra } from "../lib/pedidosDisplay";
+import { useListaRemota } from "../lib/useListaRemota";
+import { EstadoCargaLista } from "../components/EstadoCargaLista";
 
 function listoParaEntregar(pedido: Pedido): boolean {
   return pedido.estado === "COMPLETADO";
@@ -20,14 +21,16 @@ export function EntregaPage() {
   const { token } = useAuth();
   const socket = useSocket();
   const { configuracion } = useConfiguracion();
-  const [cola, setCola] = useState<Pedido[]>([]);
+  const {
+    datos: cola,
+    setDatos: setCola,
+    estado: estadoCarga,
+    error: errorCarga,
+    recargar: resincronizar,
+  } = useListaRemota<Pedido>("/pedidos/cola?estacion=entrega", token);
   const [marcando, setMarcando] = useState<string | null>(null);
   const [pedidoAConfirmar, setPedidoAConfirmar] = useState<Pedido | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<Pedido[]>("/pedidos/cola?estacion=entrega", token).then(setCola);
-  }, [token]);
 
   useEffect(() => {
     if (!socket) return;
@@ -43,10 +46,6 @@ export function EntregaPage() {
         return yaEsta ? prev.map((p) => (p.id === pedido.id ? pedido : p)) : [...prev, pedido];
       });
     };
-    const resincronizar = () => {
-      apiFetch<Pedido[]>("/pedidos/cola?estacion=entrega", token).then(setCola);
-    };
-
     socket.on(SOCKET_EVENTS.PEDIDO_NUEVO, actualizar);
     socket.on(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, actualizar);
     socket.on(SOCKET_EVENTS.PEDIDO_CANCELADO, actualizar);
@@ -66,7 +65,7 @@ export function EntregaPage() {
       socket.off(SOCKET_EVENTS.PEDIDO_ENTREGADO, actualizar);
       socket.off("connect", resincronizar);
     };
-  }, [socket, token]);
+  }, [socket, setCola, resincronizar]);
 
   async function marcarEntregado(pedido: Pedido) {
     setMarcando(pedido.id);
@@ -101,9 +100,12 @@ export function EntregaPage() {
       <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
         {/* Apagado: no se muestra ningún pedido (ya lo avisa el cartel de arriba). */}
         {colaVisible.length === 0 && configuracion.entregaHabilitada && (
-          <p className="col-span-full text-center text-base text-neutral-400">
-            No hay pedidos en camino.
-          </p>
+          <EstadoCargaLista
+            estado={estadoCarga}
+            error={errorCarga}
+            vacio="No hay pedidos en camino."
+            className="col-span-full text-center text-base"
+          />
         )}
 
         {/* El número grande es el número de ticket del turno, no la posición en la
@@ -153,27 +155,9 @@ export function EntregaPage() {
                   </p>
                 )}
 
-                <ul className="mb-3 divide-y divide-neutral-100">
-                  {pedido.items.map((item) => (
-                    <li key={item.id} className="flex items-center gap-3 py-2 first:pt-0">
-                      <ImagenProducto
-                        imagenUrl={item.imagenUrl}
-                        nombre={item.nombreProducto}
-                        className="h-14 w-14 shrink-0 rounded-lg"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-lg font-semibold text-neutral-900">
-                          {item.cantidad}x {item.nombreProducto}
-                        </p>
-                        {item.extras.length > 0 && (
-                          <p className="text-sm text-neutral-500">
-                            {item.extras.map(formatoExtra).join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mb-3">
+                  <LineasPedido items={pedido.items} tamano="mediano" />
+                </div>
 
                 {/* Estado de preparación — el botón recién se habilita cuando
                     cocina Y parrilla (si aplica) ya terminaron. */}

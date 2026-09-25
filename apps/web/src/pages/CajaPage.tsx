@@ -21,6 +21,8 @@ import { useVentasOffline } from "../lib/ventasOfflineContext";
 import { guardarUltimoTurnoConocido, leerUltimoTurnoConocido } from "../lib/turnoCache";
 import { IconInput } from "../components/IconInput";
 import { ImagenProducto } from "../components/ImagenProducto";
+import { EstadoCargaLista } from "../components/EstadoCargaLista";
+import { useListaRemota } from "../lib/useListaRemota";
 import {
   IconAlerta,
   IconBag,
@@ -122,21 +124,18 @@ export function CajaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metodosPagoDisponibles]);
 
-  const [pedidosPendientes, setPedidosPendientes] = useState<Pedido[]>([]);
+  // Si falla (sin conexión) se queda con la última lista conocida y reintenta.
+  const {
+    datos: pedidosPendientes,
+    estado: estadoPendientes,
+    error: errorPendientes,
+    recargar: cargarPendientes,
+  } = useListaRemota<Pedido>("/pedidos?estado=pendientes", token);
   const [modalPendientesAbierto, setModalPendientesAbierto] = useState(false);
   const [pedidoAAnular, setPedidoAAnular] = useState<Pedido | null>(null);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
   const [reimprimiendo, setReimprimiendo] = useState<number | null>(null);
   const [avisoReimpresion, setAvisoReimpresion] = useState<string | null>(null);
-
-  function cargarPendientes() {
-    apiFetch<Pedido[]>("/pedidos?estado=pendientes", token)
-      .then(setPedidosPendientes)
-      .catch(() => {
-        // Sin conexión — se deja la última lista conocida en pantalla en vez
-        // de vaciarla.
-      });
-  }
 
   async function anular(pedido: Pedido) {
     setErrorAnular(null);
@@ -146,6 +145,9 @@ export function CajaPage() {
       cargarPendientes();
     } catch (err) {
       setErrorAnular(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
+      // Lo más común es que el pedido ya haya cambiado de estado en otra
+      // pantalla: refrescar para que la lista muestre cómo está de verdad.
+      cargarPendientes();
     }
   }
 
@@ -164,15 +166,14 @@ export function CajaPage() {
   }
 
   useEffect(() => {
-    cargarPendientes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  useEffect(() => {
     if (!socket) return;
     // Cualquiera de estos eventos puede sacar o meter un pedido de la lista de
     // "pendientes" (ej. cocina/parrilla lo terminan, o se anula desde otra caja).
+    // "connect" también: los eventos que llegaron mientras el socket estaba
+    // caído (wifi que se corta, laptop suspendida) se perdieron, y sin esto la
+    // lista queda vieja y ofrece anular pedidos que ya no están pendientes.
     const onCambio = () => cargarPendientes();
+    socket.on("connect", onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_NUEVO, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_CANCELADO, onCambio);
@@ -180,6 +181,7 @@ export function CajaPage() {
     socket.on(SOCKET_EVENTS.PEDIDO_PARRILLA_LISTA, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_COMPLETADO, onCambio);
     return () => {
+      socket.off("connect", onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_NUEVO, onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_CANCELADO, onCambio);
@@ -380,7 +382,10 @@ export function CajaPage() {
           </span>
         )}
         <button
-          onClick={() => setModalPendientesAbierto(true)}
+          onClick={() => {
+            cargarPendientes();
+            setModalPendientesAbierto(true);
+          }}
           className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm"
         >
           <IconPedidos width={14} height={14} />
@@ -881,7 +886,12 @@ export function CajaPage() {
             </div>
           )}
           {pedidosPendientes.length === 0 ? (
-            <p className="text-sm text-neutral-400">No hay pedidos pendientes en este momento.</p>
+            <EstadoCargaLista
+              estado={estadoPendientes}
+              error={errorPendientes}
+              vacio="No hay pedidos pendientes en este momento."
+              className="text-sm"
+            />
           ) : (
             <ul className="space-y-3">
               {pedidosPendientes.map((pedido) => (

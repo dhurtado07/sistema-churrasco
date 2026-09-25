@@ -1,6 +1,7 @@
+// Primero: env.js fija process.env.TZ antes de que cargue cualquier otro módulo.
+import { env } from "./env.js";
 import { buildApp } from "./app.js";
 import { createSocketServer } from "./ws/socket.js";
-import { env } from "./env.js";
 
 async function main() {
   const app = await buildApp();

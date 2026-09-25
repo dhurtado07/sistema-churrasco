@@ -1,17 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { RUTA_POR_ROL } from "../lib/rutas";
 import { IconInput } from "../components/IconInput";
 import { IconLock, IconLogin, IconUser } from "../components/icons";
-
-const RUTA_POR_ROL: Record<string, string> = {
-  cajero: "/caja",
-  cocina: "/cocina",
-  parrilla: "/parrilla",
-  entrega: "/entrega",
-  admin: "/admin",
-  empleado: "/asistencia",
-};
 
 export function LoginPage() {
   const { login, cargando, error, usuario } = useAuth();

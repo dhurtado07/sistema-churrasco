@@ -176,7 +176,7 @@ export function AdminGananciasPage() {
                     <Th align="right" hint="Cantidad de unidades vendidas en el período.">
                       Unidades vendidas
                     </Th>
-                    <Th align="right" hint="Precio de venta de una unidad de este producto (es fijo, no varía).">
+                    <Th align="right" hint="Precio cobrado por una unidad. Si el precio cambió dentro del período, es el promedio.">
                       Precio unitario
                     </Th>
                     <Th align="right" hint="Unidades vendidas × precio unitario.">
@@ -186,8 +186,15 @@ export function AdminGananciasPage() {
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {filasPagina.map((p) => (
-                    <tr key={p.productoId}>
-                      <td className="px-3 py-2.5 font-medium text-neutral-900">{p.nombre}</td>
+                    <tr key={`${p.esExtra ? "extra" : "producto"}:${p.productoId}`}>
+                      <td className="px-3 py-2.5 font-medium text-neutral-900">
+                        {p.nombre}
+                        {p.esExtra && (
+                          <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-normal text-neutral-500">
+                            extra
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-right text-neutral-700">{p.cantidad}</td>
                       <td className="px-3 py-2.5 text-right text-neutral-700">{bs(p.total / p.cantidad)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold text-neutral-900">{bs(p.total)}</td>

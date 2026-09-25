@@ -6,6 +6,7 @@ import { prisma } from "../../db.js";
 import { obtenerConfiguracion } from "../configuracion/service.js";
 import { ajustarStockPorVenta } from "../insumos/service.js";
 import { inicioDelDia, finDelDia } from "../reportes/service.js";
+import { urlImagenPublica } from "../imagenes/urls.js";
 
 /** Códigos de error transitorios de Prisma/SQLite bajo escritura concurrente
  * (varias estaciones cobrando/marcando "listo" al mismo tiempo) — no indican
@@ -79,7 +80,9 @@ export function resolverEstadoInicial(config: Configuracion, requiereParrilla: b
 }
 
 const pedidoInclude = {
-  items: { include: { extras: true } },
+  // La foto del extra no se copia al pedido (ItemPedidoExtra): se toma del
+  // extra, solo para armar su enlace (ver toPedidoDTO).
+  items: { include: { extras: { include: { extra: { select: { imagenUrl: true } } } } } },
   cajero: true,
 } as const;
 
@@ -111,7 +114,7 @@ export function toPedidoDTO(pedido: PedidoConRelaciones): PedidoDTO {
       id: item.id,
       productoId: item.productoId,
       nombreProducto: item.nombreProducto,
-      imagenUrl: item.imagenUrl,
+      imagenUrl: urlImagenPublica("productos", item.productoId, item.imagenUrl),
       requiereParrilla: item.requiereParrilla,
       cantidad: item.cantidad,
       precioUnitario: item.precioUnitario,
@@ -120,6 +123,7 @@ export function toPedidoDTO(pedido: PedidoConRelaciones): PedidoDTO {
         nombre: extra.nombre,
         precio: extra.precio,
         cantidad: extra.cantidad,
+        imagenUrl: urlImagenPublica("extras", extra.extraId, extra.extra.imagenUrl),
       })),
     })),
   };

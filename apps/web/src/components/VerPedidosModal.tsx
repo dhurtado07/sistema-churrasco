@@ -4,10 +4,11 @@ import { SOCKET_EVENTS, codigoPedido, coincideConCodigo } from "shared";
 import { Modal } from "./Modal";
 import { IconInput } from "./IconInput";
 import { IconPedidos, IconSearch } from "./icons";
+import { useListaRemota } from "../lib/useListaRemota";
+import { EstadoCargaLista } from "./EstadoCargaLista";
 import { useAuth } from "../lib/auth";
 import { useSocket } from "../lib/socketContext";
 import { useConfiguracion } from "../lib/configuracionContext";
-import { apiFetch } from "../lib/api";
 import { formatBs, formatoFechaHoraBO } from "../lib/format";
 import { ESTADO_BADGE, ESTADO_LABEL, formatoExtra, TABS_PEDIDOS, type FiltroPedidos } from "../lib/pedidosDisplay";
 
@@ -24,22 +25,14 @@ export function VerPedidosModal() {
   const { configuracion } = useConfiguracion();
   const [abierto, setAbierto] = useState(false);
   const [tab, setTab] = useState<FiltroPedidos>("atendidos");
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [cargando, setCargando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
 
-  function cargar() {
-    setCargando(true);
-    apiFetch<Pedido[]>(`/pedidos?estado=${tab}`, token)
-      .then(setPedidos)
-      .finally(() => setCargando(false));
-  }
-
-  useEffect(() => {
-    if (!abierto) return;
-    cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [abierto, tab, token]);
+  const {
+    datos: pedidos,
+    estado: estadoCarga,
+    error: errorCarga,
+    recargar: cargar,
+  } = useListaRemota<Pedido>(abierto ? `/pedidos?estado=${tab}` : null, token);
 
   useEffect(() => {
     if (!abierto || !socket) return;
@@ -111,13 +104,17 @@ export function VerPedidosModal() {
             className="mb-3"
           />
 
-          {cargando && <p className="text-sm text-neutral-400">Cargando…</p>}
-          {!cargando && pedidosFiltrados.length === 0 && (
-            <p className="text-sm text-neutral-400">
-              {pedidos.length === 0
-                ? `No hay pedidos en "${TABS_PEDIDOS.find((t) => t.key === tab)?.label}".`
-                : "Ningún pedido coincide con la búsqueda."}
-            </p>
+          {pedidos.length === 0 ? (
+            <EstadoCargaLista
+              estado={estadoCarga}
+              error={errorCarga}
+              vacio={`No hay pedidos en "${TABS_PEDIDOS.find((t) => t.key === tab)?.label}".`}
+              className="text-sm"
+            />
+          ) : (
+            pedidosFiltrados.length === 0 && (
+              <p className="text-sm text-neutral-400">Ningún pedido coincide con la búsqueda.</p>
+            )
           )}
 
           <ul className="max-h-[55vh] space-y-2.5 overflow-y-auto">

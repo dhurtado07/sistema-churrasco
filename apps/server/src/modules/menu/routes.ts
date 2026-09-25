@@ -3,13 +3,27 @@ import { crearProductoSchema, actualizarProductoSchema, crearExtraSchema, actual
 import { prisma } from "../../db.js";
 import { realtime } from "../../ws/socket.js";
 import { actualizarReceta, InsumoValidationError, obtenerReceta } from "../insumos/service.js";
+import { conImagenPublica } from "../imagenes/urls.js";
 
 async function broadcastMenu() {
   const [productos, extras] = await Promise.all([
     prisma.producto.findMany({ orderBy: ORDEN_PRODUCTOS }),
     prisma.extra.findMany({ orderBy: { nombre: "asc" } }),
   ]);
-  realtime.menuActualizado({ productos, extras });
+  realtime.menuActualizado(menuConImagenesPublicas(productos, extras));
+}
+
+/** Caja, el menú público y los avisos en vivo reciben las fotos como enlace
+ * (ver imagenes/urls.ts); solo /admin/menu las manda completas, porque la
+ * pantalla de edición de productos las necesita para volver a guardarlas. */
+function menuConImagenesPublicas<P extends { id: string; imagenUrl: string | null }, E extends { id: string; imagenUrl: string | null }>(
+  productos: P[],
+  extras: E[],
+) {
+  return {
+    productos: productos.map((p) => conImagenPublica("productos", p)),
+    extras: extras.map((e) => conImagenPublica("extras", e)),
+  };
 }
 
 /** Orden del menú: por categoría y, dentro de cada una, el orden que definió el
@@ -22,7 +36,7 @@ export async function menuRoutes(fastify: FastifyInstance) {
       prisma.producto.findMany({ where: { activo: true }, orderBy: ORDEN_PRODUCTOS }),
       prisma.extra.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     ]);
-    return { productos, extras };
+    return menuConImagenesPublicas(productos, extras);
   });
 
   // --- Sitio público (sin login) — menú y datos del negocio para /menu ---
@@ -32,7 +46,7 @@ export async function menuRoutes(fastify: FastifyInstance) {
       prisma.producto.findMany({ where: { activo: true }, orderBy: ORDEN_PRODUCTOS }),
       prisma.extra.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     ]);
-    return { productos, extras };
+    return menuConImagenesPublicas(productos, extras);
   });
 
   fastify.get("/publico/negocio", async () => {

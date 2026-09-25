@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Producto } from "shared";
 import { apiFetch } from "../lib/api";
+import { urlDeImagen } from "../lib/env";
 import { formatBs } from "../lib/format";
 import {
   IconBag,
@@ -175,7 +176,7 @@ export function LandingPage() {
             >
               {producto.imagenUrl ? (
                 <img
-                  src={producto.imagenUrl}
+                  src={urlDeImagen(producto.imagenUrl)}
                   alt={producto.nombre}
                   className="h-40 w-full object-cover"
                 />

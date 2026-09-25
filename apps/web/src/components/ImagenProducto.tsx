@@ -1,4 +1,5 @@
 import { useState, type SVGProps } from "react";
+import { urlDeImagen } from "../lib/env";
 import {
   IconComidaArroz,
   IconComidaBebida,
@@ -55,7 +56,7 @@ export function ImagenProducto({
   // al ícono en vez de quedar en blanco — el respaldo tiene que ser garantía,
   // no solo para cuando falta la foto sino también para cuando falla.
   if (imagenUrl && !fallo) {
-    return <img src={imagenUrl} alt={nombre} onError={() => setFallo(true)} className={`${className} object-cover`} />;
+    return <img src={urlDeImagen(imagenUrl)} alt={nombre} onError={() => setFallo(true)} className={`${className} object-cover`} />;
   }
   const Icono = iconoComida(nombre, categoria);
   return (

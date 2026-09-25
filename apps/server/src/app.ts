@@ -21,6 +21,7 @@ import { empleadosRoutes } from "./modules/empleados/routes.js";
 import { asistenciaRoutes } from "./modules/asistencia/routes.js";
 import { usuariosRoutes } from "./modules/usuarios/routes.js";
 import { insumosRoutes } from "./modules/insumos/routes.js";
+import { imagenesRoutes } from "./modules/imagenes/routes.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -120,6 +121,7 @@ export async function buildApp() {
   await app.register(asistenciaRoutes);
   await app.register(usuariosRoutes);
   await app.register(insumosRoutes);
+  await app.register(imagenesRoutes);
 
   return app;
 }

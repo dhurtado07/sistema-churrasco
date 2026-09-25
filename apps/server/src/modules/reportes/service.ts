@@ -4,9 +4,10 @@ import type {
   CategoriaMovimientoCaja,
   MetodoPago,
   PuntoSerieFinanciera,
+  VentaPorProducto,
 } from "shared";
 import ExcelJS from "exceljs";
-import { totalLinea } from "shared";
+import { aCentavos } from "shared";
 import { prisma } from "../../db.js";
 import { MOVIMIENTO_REAL_WHERE } from "../caja/service.js";
 
@@ -20,6 +21,37 @@ export function finDelDia(fecha: Date): Date {
   const d = new Date(fecha);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+interface ItemVendido {
+  productoId: string;
+  nombreProducto: string;
+  cantidad: number;
+  precioUnitario: number;
+  extras: { extraId: string; nombre: string; precio: number; cantidad: number }[];
+}
+
+/** Agrupa lo vendido por plato y por extra, de mayor a menor monto. Los extras van
+ * en filas propias: si se sumaran al plato, su "precio unitario" (total ÷ unidades)
+ * dejaría de ser el precio del plato. */
+export function ventasPorProducto(items: ItemVendido[]): VentaPorProducto[] {
+  const filas = new Map<string, VentaPorProducto>();
+  const sumar = (clave: string, fila: Omit<VentaPorProducto, "cantidad" | "total">, cantidad: number, total: number) => {
+    const actual = filas.get(clave) ?? { ...fila, cantidad: 0, total: 0 };
+    actual.cantidad += cantidad;
+    actual.total = aCentavos(actual.total + total);
+    filas.set(clave, actual);
+  };
+
+  for (const item of items) {
+    const plato = { productoId: item.productoId, nombre: item.nombreProducto, esExtra: false };
+    sumar(`producto:${item.productoId}`, plato, item.cantidad, item.precioUnitario * item.cantidad);
+    for (const extra of item.extras) {
+      const fila = { productoId: extra.extraId, nombre: extra.nombre, esExtra: true };
+      sumar(`extra:${extra.extraId}`, fila, extra.cantidad, extra.precio * extra.cantidad);
+    }
+  }
+  return [...filas.values()].sort((a, b) => b.total - a.total);
 }
 
 export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desdeInput): Promise<ReporteGanancias> {
@@ -36,26 +68,12 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
     include: { items: { include: { extras: true } } },
   });
 
-  const porProductoMap = new Map<string, { productoId: string; nombre: string; cantidad: number; total: number }>();
   const porTipoConsumo: Record<"LOCAL" | "LLEVAR", number> = { LOCAL: 0, LLEVAR: 0 };
   let totalVendido = 0;
 
   for (const pedido of pedidos) {
     totalVendido += pedido.total;
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
-
-    for (const item of pedido.items) {
-      const itemTotal = totalLinea(item.precioUnitario, item.cantidad, item.extras);
-      const actual = porProductoMap.get(item.productoId) ?? {
-        productoId: item.productoId,
-        nombre: item.nombreProducto,
-        cantidad: 0,
-        total: 0,
-      };
-      actual.cantidad += item.cantidad;
-      actual.total += itemTotal;
-      porProductoMap.set(item.productoId, actual);
-    }
   }
 
   return {
@@ -64,7 +82,7 @@ export async function reporteGanancias(desdeInput: Date, hastaInput: Date = desd
     totalVendido,
     cantidadPedidos: pedidos.length,
     porTipoConsumo,
-    porProducto: [...porProductoMap.values()].sort((a, b) => b.total - a.total),
+    porProducto: ventasPorProducto(pedidos.flatMap((p) => p.items)),
   };
 }
 
@@ -148,21 +166,8 @@ export async function reporteFinanciero(
   }
 
   const porTipoConsumo: Record<"LOCAL" | "LLEVAR", number> = { LOCAL: 0, LLEVAR: 0 };
-  const porProductoMap = new Map<string, { productoId: string; nombre: string; cantidad: number; total: number }>();
   for (const pedido of pedidos) {
     porTipoConsumo[pedido.tipoConsumo as "LOCAL" | "LLEVAR"] += pedido.total;
-    for (const item of pedido.items) {
-      const itemTotal = totalLinea(item.precioUnitario, item.cantidad, item.extras);
-      const actual = porProductoMap.get(item.productoId) ?? {
-        productoId: item.productoId,
-        nombre: item.nombreProducto,
-        cantidad: 0,
-        total: 0,
-      };
-      actual.cantidad += item.cantidad;
-      actual.total += itemTotal;
-      porProductoMap.set(item.productoId, actual);
-    }
   }
 
   return {
@@ -177,7 +182,7 @@ export async function reporteFinanciero(
     serie: [...serieMap.values()].sort((a, b) => a.etiqueta.localeCompare(b.etiqueta)),
     porTipoConsumo,
     // Top 8 — un dashboard no necesita el catálogo entero, solo lo que más pesa.
-    porProducto: [...porProductoMap.values()].sort((a, b) => b.total - a.total).slice(0, 8),
+    porProducto: ventasPorProducto(pedidos.flatMap((p) => p.items)).slice(0, 8),
   };
 }
 
@@ -214,8 +219,8 @@ export async function generarExcelFinanciero(desde: Date, hasta: Date, agrupar: 
   resumen.addRow(["Local", reporte.porTipoConsumo.LOCAL]);
   resumen.addRow(["Para llevar", reporte.porTipoConsumo.LLEVAR]);
   resumen.addRow([]);
-  resumen.addRow(["Platos más vendidos", "Cantidad", "Total"]);
-  for (const p of reporte.porProducto) resumen.addRow([p.nombre, p.cantidad, p.total]);
+  resumen.addRow(["Productos y extras más vendidos", "Cantidad", "Total"]);
+  for (const p of reporte.porProducto) resumen.addRow([p.esExtra ? `${p.nombre} (extra)` : p.nombre, p.cantidad, p.total]);
   resumen.getColumn(1).width = 28;
 
   const detalle = workbook.addWorksheet("Movimientos");

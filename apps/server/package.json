@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "TZ=America/La_Paz tsx watch src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "TZ=America/La_Paz node dist/index.js",
+    "start": "node dist/index.js",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",

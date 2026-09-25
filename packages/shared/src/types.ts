@@ -55,6 +55,10 @@ export interface ExtraSeleccionado {
   nombre: string;
   precio: number;
   cantidad: number;
+  /** Foto del extra (enlace a /imagenes/extras/...): en cocina, parrilla y
+   * entrega el extra se muestra como una línea más, igual que un producto.
+   * Puede faltar en un pedido armado sin conexión todavía no sincronizado. */
+  imagenUrl?: string | null;
 }
 
 export interface ItemPedido {
@@ -163,7 +167,19 @@ export interface ReporteGanancias {
   totalVendido: number;
   cantidadPedidos: number;
   porTipoConsumo: Record<TipoConsumo, number>;
-  porProducto: { productoId: string; nombre: string; cantidad: number; total: number }[];
+  porProducto: VentaPorProducto[];
+}
+
+/** Una fila de "qué se vendió": un plato o un extra (arroz, huevo…). Los extras van
+ * en su propia fila, así el total de un plato es solo el plato (unidades × precio)
+ * y el de un extra, sus propias unidades × su precio. */
+export interface VentaPorProducto {
+  /** Id del producto, o del extra si `esExtra`. */
+  productoId: string;
+  nombre: string;
+  esExtra: boolean;
+  cantidad: number;
+  total: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +385,6 @@ export interface ReporteFinanciero {
   /** Ventas por tipo de consumo (local vs. para llevar) de los pedidos
    * completados en el período — para el dashboard del dueño. */
   porTipoConsumo: Record<TipoConsumo, number>;
-  /** Top productos vendidos en el período (por monto), de mayor a menor. */
-  porProducto: { productoId: string; nombre: string; cantidad: number; total: number }[];
+  /** Top productos y extras vendidos en el período (por monto), de mayor a menor. */
+  porProducto: VentaPorProducto[];
 }

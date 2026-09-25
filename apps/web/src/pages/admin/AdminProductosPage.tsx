@@ -79,24 +79,30 @@ export function AdminProductosPage() {
   const tabActiva = tabs.includes(tab) ? tab : (tabs[0] ?? TAB_EXTRAS);
   const productosDeLaTab = productosPorCategoria.find(([categoria]) => categoria === tabActiva)?.[1] ?? [];
 
-  useEffect(() => {
+  function cargarMenu() {
     apiFetch<{ productos: Producto[]; extras: Extra[] }>("/admin/menu", token).then((data) => {
       setProductos(data.productos);
       setExtras(data.extras);
     });
+  }
+
+  useEffect(() => {
+    cargarMenu();
     apiFetch<Insumo[]>("/insumos?activos=true", token).then(setInsumos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
     if (!socket) return;
-    const onMenu = (payload: { productos: Producto[]; extras: Extra[] }) => {
-      setProductos(payload.productos);
-      setExtras(payload.extras);
-    };
+    // El aviso en vivo trae las fotos como enlace (liviano, para Caja); acá
+    // hacen falta completas porque al editar un producto se vuelven a
+    // guardar, así que se recarga desde /admin/menu.
+    const onMenu = () => cargarMenu();
     socket.on(SOCKET_EVENTS.MENU_ACTUALIZADO, onMenu);
     return () => {
       socket.off(SOCKET_EVENTS.MENU_ACTUALIZADO, onMenu);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
   async function confirmarToggle() {

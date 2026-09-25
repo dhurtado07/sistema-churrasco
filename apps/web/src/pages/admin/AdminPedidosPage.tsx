@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Pedido } from "shared";
 import { SOCKET_EVENTS, codigoPedido, coincideConCodigo, hoyBolivia, inicioDelDiaBolivia } from "shared";
+import { useListaRemota } from "../../lib/useListaRemota";
+import { EstadoCargaLista } from "../../components/EstadoCargaLista";
 import { useAuth } from "../../lib/auth";
 import { apiFetch, ApiError } from "../../lib/api";
 import { useSocket } from "../../lib/socketContext";
@@ -41,8 +43,6 @@ export function AdminPedidosPage() {
   const socket = useSocket();
   const { configuracion } = useConfiguracion();
   const [tab, setTab] = useState<Filtro>("pendientes");
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [cargando, setCargando] = useState(true);
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null);
   const [pedidoHistorial, setPedidoHistorial] = useState<Pedido | null>(null);
   const [pedidoACancelar, setPedidoACancelar] = useState<Pedido | null>(null);
@@ -57,34 +57,19 @@ export function AdminPedidosPage() {
   const [rangoPersonalizado, setRangoPersonalizado] = useState(false);
   const [desdeManual, setDesdeManual] = useState(hoyComoInputDate());
   const [hastaManual, setHastaManual] = useState(hoyComoInputDate());
-  // React (StrictMode) puede disparar el efecto de carga dos veces, y un
-  // cambio rápido de pestaña puede dejar una petición vieja todavía en
-  // vuelo. Si esa respuesta vieja llega después de la de la pestaña actual,
-  // no debe pisar los datos correctos — por eso se descarta si `tab` ya
-  // cambió quiere decir que la respuesta pertenece a otra pestaña.
-  const tabRef = useRef(tab);
-  tabRef.current = tab;
-
-  async function cargar() {
-    const tabAlPedir = tab;
-    setCargando(true);
-    try {
-      const desde = fechaLocalDesdeInput(rangoPersonalizado ? desdeManual : hoyComoInputDate());
-      const hasta = fechaLocalDesdeInput(rangoPersonalizado ? hastaManual : hoyComoInputDate());
-      const data = await apiFetch<Pedido[]>(
-        `/pedidos?estado=${tabAlPedir}&desde=${desde.toISOString()}&hasta=${hasta.toISOString()}`,
-        token,
-      );
-      if (tabRef.current === tabAlPedir) setPedidos(data);
-    } finally {
-      if (tabRef.current === tabAlPedir) setCargando(false);
-    }
-  }
-
-  useEffect(() => {
-    cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, token, rangoPersonalizado, desdeManual, hastaManual]);
+  const desde = fechaLocalDesdeInput(rangoPersonalizado ? desdeManual : hoyComoInputDate());
+  const hasta = fechaLocalDesdeInput(rangoPersonalizado ? hastaManual : hoyComoInputDate());
+  // Una respuesta vieja (otra pestaña u otro rango) nunca pisa la actual: lo
+  // resuelve useListaRemota al cambiar la ruta.
+  const {
+    datos: pedidos,
+    estado: estadoCarga,
+    error: errorCarga,
+    recargar: cargar,
+  } = useListaRemota<Pedido>(
+    `/pedidos?estado=${tab}&desde=${desde.toISOString()}&hasta=${hasta.toISOString()}`,
+    token,
+  );
 
   useEffect(() => {
     if (!socket) return;
@@ -92,6 +77,9 @@ export function AdminPedidosPage() {
     // pestañas — más simple y confiable recargar la pestaña activa que tratar
     // de parchear el estado local para cada evento posible.
     const onCambio = () => cargar();
+    // Al reconectar: los eventos perdidos mientras el socket estaba caído
+    // dejarían la pestaña desactualizada.
+    socket.on("connect", onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_NUEVO, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_CANCELADO, onCambio);
@@ -100,6 +88,7 @@ export function AdminPedidosPage() {
     socket.on(SOCKET_EVENTS.PEDIDO_COMPLETADO, onCambio);
     socket.on(SOCKET_EVENTS.PEDIDO_ENTREGADO, onCambio);
     return () => {
+      socket.off("connect", onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_NUEVO, onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, onCambio);
       socket.off(SOCKET_EVENTS.PEDIDO_CANCELADO, onCambio);
@@ -130,6 +119,8 @@ export function AdminPedidosPage() {
       cargar();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo anular el pedido");
+      // Probablemente cambió de estado en otra pantalla: mostrar cómo está de verdad.
+      cargar();
     }
   }
 
@@ -210,13 +201,17 @@ export function AdminPedidosPage() {
       />
 
       <div className="space-y-3">
-        {cargando && <p className="text-sm text-neutral-400">Cargando…</p>}
-        {!cargando && pedidosFiltrados.length === 0 && (
-          <p className="text-sm text-neutral-400">
-            {pedidos.length === 0
-              ? `No hay pedidos en "${TABS.find((t) => t.key === tab)?.label}".`
-              : "Ningún pedido coincide con la búsqueda."}
-          </p>
+        {pedidos.length === 0 ? (
+          <EstadoCargaLista
+            estado={estadoCarga}
+            error={errorCarga}
+            vacio={`No hay pedidos en "${TABS.find((t) => t.key === tab)?.label}".`}
+            className="text-sm"
+          />
+        ) : (
+          pedidosFiltrados.length === 0 && (
+            <p className="text-sm text-neutral-400">Ningún pedido coincide con la búsqueda.</p>
+          )
         )}
 
         {pedidosFiltrados.map((pedido) => (

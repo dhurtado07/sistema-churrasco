@@ -3,12 +3,13 @@ import { totalLinea } from "shared";
 
 // Un pedido con plato x2 y un extra: lo que se cobró (pedido.total) tiene que
 // coincidir con la suma de las líneas por producto que muestra el reporte.
-const item = (productoId: string, cantidad: number, precioUnitario: number, extras: { precio: number; cantidad: number }[]) => ({
+type ExtraDePrueba = { extraId?: string; nombre?: string; precio: number; cantidad: number };
+const item = (productoId: string, cantidad: number, precioUnitario: number, extras: ExtraDePrueba[]) => ({
   productoId,
   nombreProducto: productoId,
   cantidad,
   precioUnitario,
-  extras,
+  extras: extras.map((e) => ({ extraId: e.extraId ?? `extra-${e.precio}`, nombre: e.nombre ?? `Extra ${e.precio}`, ...e })),
 });
 
 const pedidos = vi.hoisted(() => [] as unknown[]);
@@ -31,5 +32,22 @@ describe("reporteGanancias: las líneas por producto suman el total vendido", ()
     const sumaProductos = reporte.porProducto.reduce((s, p) => s + p.total, 0);
     expect(reporte.totalVendido).toBe(82 + 30 + 53);
     expect(sumaProductos).toBe(reporte.totalVendido);
+  });
+
+  it("los extras van en su propia fila y el precio unitario del plato queda en su precio real", async () => {
+    const items = [
+      item("churrasco", 2, 37, [{ extraId: "arroz", nombre: "Arroz extra", precio: 8, cantidad: 1 }]),
+      item("churrasco", 1, 37, [{ extraId: "arroz", nombre: "Arroz extra", precio: 8, cantidad: 2 }]),
+      item("refresco", 3, 10, []),
+    ];
+    pedidos.length = 0;
+    pedidos.push({ total: 111 + 24 + 30, tipoConsumo: "LOCAL", items });
+
+    const reporte = await reporteGanancias(new Date());
+    expect(reporte.porProducto).toEqual([
+      { productoId: "churrasco", nombre: "churrasco", esExtra: false, cantidad: 3, total: 111 },
+      { productoId: "refresco", nombre: "refresco", esExtra: false, cantidad: 3, total: 30 },
+      { productoId: "arroz", nombre: "Arroz extra", esExtra: true, cantidad: 3, total: 24 },
+    ]);
   });
 });

@@ -21,11 +21,20 @@ test("un admin puede marcar la entrada de un empleado a mano", async ({ page, re
   // No importa cuál quede seleccionado por defecto (puede haber más de un
   // empleado en la base) — lo que se prueba es el flujo de marcar a mano,
   // no un empleado en particular.
-  await page.getByRole("button", { name: /marcar entrada|marcar salida/i }).first().click();
+  // La base de desarrollo acumula marcas manuales de corridas anteriores: se
+  // compara cuántas hay antes y después en vez de esperar que haya una sola.
+  const contarMarcasManuales = async () =>
+    ((await page.locator("body").innerText()).match(/\(manual\)/g) ?? []).length;
+  const botonMarcar = page.getByRole("button", { name: /marcar entrada|marcar salida/i }).first();
+  await expect(botonMarcar).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const marcasAntes = await contarMarcasManuales();
+
+  await botonMarcar.click();
 
   await page.fill('input[name="notas"]', "E2E test");
   await page.getByRole("button", { name: /^Registrar (entrada|salida)$/ }).click();
 
-  await expect(page.getByText(/\(manual\)/)).toBeVisible();
+  await expect.poll(contarMarcasManuales).toBe(marcasAntes + 1);
   await expect(page.getByText("Presente").first()).toBeVisible();
 });

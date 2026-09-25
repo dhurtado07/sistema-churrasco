@@ -3,7 +3,7 @@ import type { Pedido } from "shared";
 import { Modal } from "./Modal";
 import { IconAlerta } from "./icons";
 import { iconoComida } from "./ImagenProducto";
-import { formatoExtra } from "../lib/pedidosDisplay";
+import { lineasDelPedido } from "../lib/pedidosDisplay";
 
 /**
  * Popup de confirmación en el medio de la pantalla, con el detalle del
@@ -59,21 +59,16 @@ export function ConfirmarPedidoModal({
       )}
 
       <ul className="mb-4 divide-y divide-neutral-100 rounded-lg border border-neutral-100">
-        {pedido.items.map((item) => {
+        {lineasDelPedido(pedido.items).map((linea) => {
           // Ícono por tipo de comida (mismo criterio que ImagenProducto en
-          // Caja) — para reconocer de un vistazo qué plato es cada línea sin
-          // tener que leer el nombre completo.
-          const IconoTipo = iconoComida(item.nombreProducto);
+          // Caja) — para reconocer de un vistazo qué es cada línea (plato o
+          // extra) sin tener que leer el nombre completo.
+          const IconoTipo = iconoComida(linea.nombre);
           return (
-            <li key={item.id} className="flex items-center gap-2.5 px-3 py-2 text-sm">
+            <li key={linea.key} className="flex items-center gap-2.5 px-3 py-2 text-sm">
               <IconoTipo width={20} height={20} className="shrink-0 text-neutral-500" />
-              <span>
-                <span className="font-medium text-neutral-900">
-                  {item.cantidad}x {item.nombreProducto}
-                </span>
-                {item.extras.length > 0 && (
-                  <span className="text-neutral-500"> ({item.extras.map(formatoExtra).join(", ")})</span>
-                )}
+              <span className="font-medium text-neutral-900">
+                {linea.cantidad}x {linea.nombre}
               </span>
             </li>
           );

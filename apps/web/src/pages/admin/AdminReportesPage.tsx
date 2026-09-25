@@ -150,7 +150,11 @@ export function AdminReportesPage() {
   }, [reporte]);
 
   const datosTopProductos = useMemo(
-    () => (reporte?.porProducto ?? []).map((p) => ({ etiqueta: p.nombre, total: p.total, cantidad: p.cantidad })),
+    () => (reporte?.porProducto ?? []).map((p) => ({
+        etiqueta: p.esExtra ? `${p.nombre} (extra)` : p.nombre,
+        total: p.total,
+        cantidad: p.cantidad,
+      })),
     [reporte],
   );
 
@@ -356,8 +360,8 @@ export function AdminReportesPage() {
             <TablaSeccion
               icono={IconGanancias}
               acento="esmeralda"
-              titulo="Platos más vendidos"
-              descripcion="Los productos que más plata generaron en el período (no solo los más pedidos)."
+              titulo="Lo más vendido"
+              descripcion="Los productos y extras que más plata generaron en el período (no solo los más pedidos)."
               className="lg:col-span-2"
             >
               <BarrasRanking

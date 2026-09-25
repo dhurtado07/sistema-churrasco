@@ -7,10 +7,11 @@ import { apiFetch, ApiError } from "../lib/api";
 import { useSocket } from "../lib/socketContext";
 import { IconAlerta, IconCheck } from "../components/icons";
 import { ConfirmarPedidoModal } from "../components/ConfirmarPedidoModal";
-import { ImagenProducto } from "../components/ImagenProducto";
+import { LineasPedido } from "../components/LineasPedido";
 import { formatoFechaHoraBO } from "../lib/format";
 import { useConfiguracion } from "../lib/configuracionContext";
-import { formatoExtra } from "../lib/pedidosDisplay";
+import { useListaRemota } from "../lib/useListaRemota";
+import { EstadoCargaLista } from "../components/EstadoCargaLista";
 
 interface Props {
   estacion: "cocina" | "parrilla";
@@ -25,14 +26,16 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
   // sin este aviso, una cola vacía se confunde con "no llegan pedidos" en vez
   // de "está apagado a propósito".
   const moduloHabilitado = estacion === "cocina" ? configuracion.cocinaHabilitada : configuracion.parrillaHabilitada;
-  const [cola, setCola] = useState<Pedido[]>([]);
+  const {
+    datos: cola,
+    setDatos: setCola,
+    estado: estadoCarga,
+    error: errorCarga,
+    recargar: resincronizar,
+  } = useListaRemota<Pedido>(`/pedidos/cola?estacion=${estacion}`, token);
   const [marcando, setMarcando] = useState<string | null>(null);
   const [pedidoAConfirmar, setPedidoAConfirmar] = useState<Pedido | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<Pedido[]>(`/pedidos/cola?estacion=${estacion}`, token).then(setCola);
-  }, [token, estacion]);
 
   useEffect(() => {
     if (!socket) return;
@@ -64,17 +67,13 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
       });
     };
 
-    // Al (re)conectar (incluida una reconexión tras un corte) volvemos a
-    // pedir el estado real de la cola por REST, para no quedarnos con una
-    // vista desincronizada si se perdió algún evento mientras no había conexión.
-    const resincronizar = () => {
-      apiFetch<Pedido[]>(`/pedidos/cola?estacion=${estacion}`, token).then(setCola);
-    };
-
     socket.on(SOCKET_EVENTS.PEDIDO_NUEVO, agregarSiCorresponde);
     socket.on(SOCKET_EVENTS.PEDIDO_COMPLETADO, quitarDeLaCola);
     socket.on(SOCKET_EVENTS.PEDIDO_ACTUALIZADO, actualizarEnCola);
     socket.on(SOCKET_EVENTS.PEDIDO_CANCELADO, actualizarEnCola);
+    // Al (re)conectar (incluida una reconexión tras un corte) volvemos a
+    // pedir el estado real de la cola por REST, para no quedarnos con una
+    // vista desincronizada si se perdió algún evento mientras no había conexión.
     socket.on("connect", resincronizar);
 
     // Ambos eventos, en ambas estaciones: si es la propia rama, saca el
@@ -93,7 +92,7 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
       socket.off(SOCKET_EVENTS.PEDIDO_COCINA_LISTA, actualizarEnCola);
       socket.off(SOCKET_EVENTS.PEDIDO_PARRILLA_LISTA, actualizarEnCola);
     };
-  }, [socket, estacion, token]);
+  }, [socket, estacion, setCola, resincronizar]);
 
   async function marcarListo(pedido: Pedido) {
     setMarcando(pedido.id);
@@ -130,9 +129,12 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
 
       <div className="grid grid-cols-1 gap-4 p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
         {colaVisible.length === 0 && moduloHabilitado && (
-          <p className="col-span-full text-center text-base text-neutral-400">
-            No hay pedidos pendientes.
-          </p>
+          <EstadoCargaLista
+            estado={estadoCarga}
+            error={errorCarga}
+            vacio="No hay pedidos pendientes."
+            className="col-span-full text-center text-base"
+          />
         )}
 
         {colaVisible.map((pedido) => (
@@ -156,29 +158,12 @@ export function ColaEstacionPage({ estacion, titulo }: Props) {
                 <p className="mb-2 text-base text-neutral-500">Cliente: {pedido.clienteNombre}</p>
               )}
 
-              <ul className="mb-4 divide-y divide-neutral-100">
-                {pedido.items
-                  .filter((item) => (estacion === "parrilla" ? item.requiereParrilla : true))
-                  .map((item) => (
-                    <li key={item.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-                      <ImagenProducto
-                        imagenUrl={item.imagenUrl}
-                        nombre={item.nombreProducto}
-                        className="h-16 w-16 shrink-0 rounded-xl"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-xl font-bold leading-tight text-neutral-900">
-                          {item.cantidad}x {item.nombreProducto}
-                        </p>
-                        {item.extras.length > 0 && (
-                          <p className="mt-0.5 text-base text-neutral-500">
-                            {item.extras.map(formatoExtra).join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-              </ul>
+              <div className="mb-4">
+                <LineasPedido
+                  items={pedido.items.filter((item) => (estacion === "parrilla" ? item.requiereParrilla : true))}
+                  tamano="grande"
+                />
+              </div>
 
               {/* Para que cocina y parrilla se vean entre sí: en cuanto una
                   rama marca "listo", la otra (y entrega) lo ven al instante. */}
